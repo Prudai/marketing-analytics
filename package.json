@@ -25,7 +25,7 @@
     "url": "https://github.com/Prudai/marketing-analytics.git"
   },
   "scripts": {
-    "build": "rm -rf dist && bun build ./src/index.ts --outdir ./dist --target browser --format esm --external react --external react-dom --external @sentry/react --external @vercel/speed-insights && tsc --emitDeclarationOnly --outDir dist",
+    "build": "rm -rf dist && tsc",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run build"
