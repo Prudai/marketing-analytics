@@ -32,6 +32,12 @@ function applyConsentMode(state: ConsentState): void {
     ad_personalization: "denied",
     analytics_storage: analytics,
   });
+  if (state === "granted") {
+    window.gtag("event", "page_view", {
+      page_location: window.location.href,
+      page_title: document.title,
+    });
+  }
 }
 
 export function initGa4({ measurementId, debug }: Ga4InitOptions): void {

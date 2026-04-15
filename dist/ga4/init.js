@@ -18,6 +18,12 @@ function applyConsentMode(state) {
         ad_personalization: "denied",
         analytics_storage: analytics,
     });
+    if (state === "granted") {
+        window.gtag("event", "page_view", {
+            page_location: window.location.href,
+            page_title: document.title,
+        });
+    }
 }
 export function initGa4({ measurementId, debug }) {
     if (typeof window === "undefined" || !measurementId || loaded)
