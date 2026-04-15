@@ -9,4 +9,5 @@ export interface Ga4InitOptions {
     debug?: boolean;
 }
 export declare function initGa4({ measurementId, debug }: Ga4InitOptions): void;
+export declare function applyAnalyticsConsent(granted: boolean): void;
 //# sourceMappingURL=init.d.ts.map

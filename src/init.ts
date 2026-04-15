@@ -1,7 +1,6 @@
 import type { InitAnalyticsConfig } from "./config";
-import { CONSENT_EVENT, type ConsentState } from "./consent/storage";
-import { trackConsentChoice } from "./ga4/events";
-import { initGa4 } from "./ga4/init";
+import { runConsent } from "./consent/run";
+import { applyAnalyticsConsent, initGa4 } from "./ga4/init";
 import { initSentry } from "./sentry/init";
 
 export function initAnalytics(config: InitAnalyticsConfig): void {
@@ -21,12 +20,10 @@ export function initAnalytics(config: InitAnalyticsConfig): void {
       measurementId: config.ga4.measurementId,
       debug: config.ga4.debug,
     });
-  }
 
-  window.addEventListener(CONSENT_EVENT, (event) => {
-    const detail = (event as CustomEvent<ConsentState>).detail;
-    if (detail === "granted" || detail === "denied") {
-      trackConsentChoice(detail);
-    }
-  });
+    void runConsent({
+      policyHref: config.consent?.policyHref,
+      onAnalyticsConsentChange: applyAnalyticsConsent,
+    });
+  }
 }

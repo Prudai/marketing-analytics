@@ -1,6 +1,5 @@
-import { CONSENT_EVENT } from "./consent/storage";
-import { trackConsentChoice } from "./ga4/events";
-import { initGa4 } from "./ga4/init";
+import { runConsent } from "./consent/run";
+import { applyAnalyticsConsent, initGa4 } from "./ga4/init";
 import { initSentry } from "./sentry/init";
 export function initAnalytics(config) {
     if (typeof window === "undefined")
@@ -18,12 +17,10 @@ export function initAnalytics(config) {
             measurementId: config.ga4.measurementId,
             debug: config.ga4.debug,
         });
+        void runConsent({
+            policyHref: config.consent?.policyHref,
+            onAnalyticsConsentChange: applyAnalyticsConsent,
+        });
     }
-    window.addEventListener(CONSENT_EVENT, (event) => {
-        const detail = event.detail;
-        if (detail === "granted" || detail === "denied") {
-            trackConsentChoice(detail);
-        }
-    });
 }
 //# sourceMappingURL=init.js.map

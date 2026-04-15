@@ -5,14 +5,13 @@ declare global {
   }
 }
 
-import { CONSENT_EVENT, type ConsentState, readConsent } from "../consent/storage";
-
 export interface Ga4InitOptions {
   measurementId: string;
   debug?: boolean;
 }
 
 let loaded = false;
+let measurementIdCache: string | null = null;
 
 function ensureDataLayer(): void {
   window.dataLayer = window.dataLayer ?? [];
@@ -23,26 +22,10 @@ function ensureDataLayer(): void {
   }
 }
 
-function applyConsentMode(state: ConsentState): void {
-  if (!window.gtag) return;
-  const analytics = state === "granted" ? "granted" : "denied";
-  window.gtag("consent", "update", {
-    ad_storage: "denied",
-    ad_user_data: "denied",
-    ad_personalization: "denied",
-    analytics_storage: analytics,
-  });
-  if (state === "granted") {
-    window.gtag("event", "page_view", {
-      page_location: window.location.href,
-      page_title: document.title,
-    });
-  }
-}
-
 export function initGa4({ measurementId, debug }: Ga4InitOptions): void {
   if (typeof window === "undefined" || !measurementId || loaded) return;
   loaded = true;
+  measurementIdCache = measurementId;
 
   ensureDataLayer();
 
@@ -66,10 +49,21 @@ export function initGa4({ measurementId, debug }: Ga4InitOptions): void {
   script.async = true;
   script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
   document.head.appendChild(script);
+}
 
-  applyConsentMode(readConsent());
-  window.addEventListener(CONSENT_EVENT, (event) => {
-    const detail = (event as CustomEvent<ConsentState>).detail;
-    applyConsentMode(detail);
+export function applyAnalyticsConsent(granted: boolean): void {
+  if (!window.gtag) return;
+  window.gtag("consent", "update", {
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+    analytics_storage: granted ? "granted" : "denied",
   });
+  if (granted && measurementIdCache) {
+    window.gtag("event", "page_view", {
+      page_location: window.location.href,
+      page_title: document.title,
+      send_to: measurementIdCache,
+    });
+  }
 }

@@ -10,4 +10,7 @@ export interface InitAnalyticsConfig {
     dsn: string;
     tracesSampleRate?: number;
   };
+  consent?: {
+    policyHref?: string;
+  };
 }

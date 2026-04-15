@@ -15,7 +15,4 @@ export function trackOutboundClick(href, label) {
 export function trackScrollDepth(depth) {
     push("scroll_depth", { depth });
 }
-export function trackConsentChoice(choice) {
-    push("consent_choice", { choice });
-}
 //# sourceMappingURL=events.js.map

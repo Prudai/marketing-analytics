@@ -1,5 +1,5 @@
-import { CONSENT_EVENT, readConsent } from "../consent/storage";
 let loaded = false;
+let measurementIdCache = null;
 function ensureDataLayer() {
     window.dataLayer = window.dataLayer ?? [];
     if (!window.gtag) {
@@ -8,27 +8,11 @@ function ensureDataLayer() {
         };
     }
 }
-function applyConsentMode(state) {
-    if (!window.gtag)
-        return;
-    const analytics = state === "granted" ? "granted" : "denied";
-    window.gtag("consent", "update", {
-        ad_storage: "denied",
-        ad_user_data: "denied",
-        ad_personalization: "denied",
-        analytics_storage: analytics,
-    });
-    if (state === "granted") {
-        window.gtag("event", "page_view", {
-            page_location: window.location.href,
-            page_title: document.title,
-        });
-    }
-}
 export function initGa4({ measurementId, debug }) {
     if (typeof window === "undefined" || !measurementId || loaded)
         return;
     loaded = true;
+    measurementIdCache = measurementId;
     ensureDataLayer();
     window.gtag("consent", "default", {
         ad_storage: "denied",
@@ -48,10 +32,22 @@ export function initGa4({ measurementId, debug }) {
     script.async = true;
     script.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(measurementId)}`;
     document.head.appendChild(script);
-    applyConsentMode(readConsent());
-    window.addEventListener(CONSENT_EVENT, (event) => {
-        const detail = event.detail;
-        applyConsentMode(detail);
+}
+export function applyAnalyticsConsent(granted) {
+    if (!window.gtag)
+        return;
+    window.gtag("consent", "update", {
+        ad_storage: "denied",
+        ad_user_data: "denied",
+        ad_personalization: "denied",
+        analytics_storage: granted ? "granted" : "denied",
     });
+    if (granted && measurementIdCache) {
+        window.gtag("event", "page_view", {
+            page_location: window.location.href,
+            page_title: document.title,
+            send_to: measurementIdCache,
+        });
+    }
 }
 //# sourceMappingURL=init.js.map

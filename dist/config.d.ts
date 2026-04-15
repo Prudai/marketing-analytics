@@ -10,5 +10,8 @@ export interface InitAnalyticsConfig {
         dsn: string;
         tracesSampleRate?: number;
     };
+    consent?: {
+        policyHref?: string;
+    };
 }
 //# sourceMappingURL=config.d.ts.map

@@ -20,7 +20,3 @@ export function trackOutboundClick(href: string, label?: string): void {
 export function trackScrollDepth(depth: 25 | 50 | 75 | 90 | 100): void {
   push("scroll_depth", { depth });
 }
-
-export function trackConsentChoice(choice: "granted" | "denied"): void {
-  push("consent_choice", { choice });
-}
