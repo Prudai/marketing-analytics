@@ -36,7 +36,6 @@ export async function runConsent(options) {
                     },
                 },
             },
-            onFirstConsent: applyCurrent,
             onConsent: applyCurrent,
             onChange: applyCurrent,
             language: {

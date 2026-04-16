@@ -43,7 +43,6 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
         },
       },
     },
-    onFirstConsent: applyCurrent,
     onConsent: applyCurrent,
     onChange: applyCurrent,
     language: {

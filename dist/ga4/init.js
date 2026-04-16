@@ -3,8 +3,11 @@ let measurementIdCache = null;
 function ensureDataLayer() {
     window.dataLayer = window.dataLayer ?? [];
     if (!window.gtag) {
-        window.gtag = function gtag(...args) {
-            window.dataLayer.push(args);
+        // Must push `arguments` (not a plain Array) — gtag.js's hydration
+        // relies on the Arguments object identity when processing the queue.
+        window.gtag = function gtag() {
+            // eslint-disable-next-line prefer-rest-params
+            window.dataLayer.push(arguments);
         };
     }
 }
