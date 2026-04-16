@@ -11,6 +11,22 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
     options.onAnalyticsConsentChange(granted);
   };
 
+  try {
+    // eslint-disable-next-line no-console
+    console.log("[prudai-analytics] runConsent starting");
+    await runInner();
+    // eslint-disable-next-line no-console
+    console.log("[prudai-analytics] runConsent done", {
+      validConsent: CookieConsent.validConsent(),
+      acceptedAnalytics: CookieConsent.acceptedCategory("analytics"),
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[prudai-analytics] runConsent failed", err);
+    throw err;
+  }
+
+  async function runInner() {
   await CookieConsent.run({
     guiOptions: {
       consentModal: { layout: "box inline", position: "bottom right" },
@@ -104,6 +120,7 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
       },
     },
   });
+  }
 }
 
 export { CookieConsent };
