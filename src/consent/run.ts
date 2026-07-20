@@ -34,7 +34,7 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
     categories.marketing = {
       services: {
         googleAds: {
-          label: "Google Ads conversiemeting",
+          label: "Google Ads",
           cookies: [{ name: /^_gcl/ }],
         },
       },
@@ -90,6 +90,12 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
   ];
 
   await CookieConsent.run({
+    // Stored consent is only re-requested on a revision mismatch. Sites that
+    // enable the marketing category must re-ask returning visitors (their
+    // cc_cookie predates the category and would deny ads consent for up to
+    // 182 days). Bump this number whenever a consent-relevant category is
+    // added or changed.
+    revision: includeMarketing ? 2 : 0,
     guiOptions: {
       consentModal: { layout: "box inline", position: "bottom right" },
       preferencesModal: { layout: "box", position: "right" },
