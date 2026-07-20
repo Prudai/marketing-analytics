@@ -4,10 +4,15 @@ declare global {
         gtag?: (...args: unknown[]) => void;
     }
 }
-export interface Ga4InitOptions {
-    measurementId: string;
+export interface GtagInitOptions {
+    measurementId?: string;
+    adsConversionId?: string;
     debug?: boolean;
 }
-export declare function initGa4({ measurementId, debug }: Ga4InitOptions): void;
-export declare function applyAnalyticsConsent(granted: boolean): void;
+export interface ConsentState {
+    analytics: boolean;
+    marketing: boolean;
+}
+export declare function initGtag({ measurementId, adsConversionId, debug }: GtagInitOptions): void;
+export declare function applyConsent({ analytics, marketing }: ConsentState): void;
 //# sourceMappingURL=init.d.ts.map

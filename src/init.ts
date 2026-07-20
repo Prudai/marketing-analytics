@@ -1,6 +1,6 @@
 import type { InitAnalyticsConfig } from "./config";
 import { runConsent } from "./consent/run";
-import { applyAnalyticsConsent, initGa4 } from "./ga4/init";
+import { applyConsent, initGtag } from "./ga4/init";
 import { initSentry } from "./sentry/init";
 
 export function initAnalytics(config: InitAnalyticsConfig): void {
@@ -15,15 +15,19 @@ export function initAnalytics(config: InitAnalyticsConfig): void {
     });
   }
 
-  if (config.ga4?.measurementId) {
-    initGa4({
-      measurementId: config.ga4.measurementId,
-      debug: config.ga4.debug,
+  const measurementId = config.ga4?.measurementId;
+  const adsConversionId = config.googleAds?.conversionId;
+  if (measurementId || adsConversionId) {
+    initGtag({
+      measurementId,
+      adsConversionId,
+      debug: config.ga4?.debug,
     });
 
     void runConsent({
       policyHref: config.consent?.policyHref,
-      onAnalyticsConsentChange: applyAnalyticsConsent,
+      marketing: Boolean(adsConversionId),
+      onConsentChange: applyConsent,
     });
   }
 }

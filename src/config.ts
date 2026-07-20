@@ -6,6 +6,9 @@ export interface InitAnalyticsConfig {
     measurementId: string;
     debug?: boolean;
   };
+  googleAds?: {
+    conversionId: string;
+  };
   sentry?: {
     dsn: string;
     tracesSampleRate?: number;
