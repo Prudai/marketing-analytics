@@ -1,9 +1,13 @@
 import { runConsent } from "./consent/run";
 import { applyConsent, initGtag } from "./ga4/init";
+import { legHerkomstVast } from "./herkomst";
 import { initSentry } from "./sentry/init";
 export function initAnalytics(config) {
     if (typeof window === "undefined")
         return;
+    // Vóór alles: waar kwam dit bezoek vandaan (landingspagina, verwijzer, utm,
+    // gclid)? Zonder toestemming te vragen, want het is onze eigen URL.
+    legHerkomstVast();
     if (config.sentry?.dsn) {
         initSentry({
             dsn: config.sentry.dsn,

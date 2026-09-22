@@ -68,3 +68,13 @@ bun run typecheck
 bun test
 bun run build
 ```
+
+## Herkomst van een bezoek (v0.3.2)
+
+`initAnalytics` legt bij de eerste pagina in een tab vast waar het bezoek vandaan kwam
+(landingspagina, verwijzer, `utm_*`, `gclid`) in `sessionStorage` onder `prudai_herkomst`;
+geen cookie, geen derde partij, onafhankelijk van de cookiebanner. Een formulier stuurt
+`leesHerkomst()` mee (eerste aanraking + de pagina van het formulier), de edge-functie
+`submit-contact-form` bewaart het in `contact_logs.herkomst` en zet een leesbare regel
+"Herkomst" in de notificatiemail en de CRM-notitie. Een nieuwe `gclid`/`utm_*` in dezelfde
+tab overschrijft de oude herkomst.
