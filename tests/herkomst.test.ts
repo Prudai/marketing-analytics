@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 
 // Minimale browser: location, referrer en een sessionStorage in geheugen.
 const opslag = new Map<string, string>();
@@ -15,6 +15,12 @@ function ga(pathname: string, search = "", referrer = "") {
 }
 
 const { legHerkomstVast, leesHerkomst, HERKOMST_SLEUTEL } = await import("../src/herkomst");
+
+// Ruim de nep-browser op: smoke.test.ts verwacht dat initAnalytics buiten de
+// browser een no-op is, en bun draait alle testbestanden in één proces.
+afterAll(() => {
+  for (const k of ["window", "document", "location", "sessionStorage"]) delete g[k];
+});
 
 describe("herkomst", () => {
   beforeEach(() => opslag.clear());
