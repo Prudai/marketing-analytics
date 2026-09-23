@@ -1,7 +1,7 @@
 {
   "name": "@prudai/marketing-analytics",
   "version": "0.3.2",
-  "description": "Shared analytics, consent, and error-tracking for PrudAI marketing sites.",
+  "description": "Shared analytics, consent, and error-tracking for Prudai marketing sites.",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
