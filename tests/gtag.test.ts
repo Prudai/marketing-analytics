@@ -331,3 +331,94 @@ afterAll(() => {
   delete g.document;
   delete g.location;
 });
+
+describe("intrekken ruimt de advertentieklik in localStorage op (v0.4.4)", () => {
+  // Stub met de Storage-API die het pakket gebruikt (length/key/removeItem).
+  function fakeStorage(init: Record<string, string>) {
+    const data = new Map(Object.entries(init));
+    return {
+      get length() {
+        return data.size;
+      },
+      key: (i: number) => [...data.keys()][i] ?? null,
+      removeItem: (k: string) => void data.delete(k),
+      keys: () => [...data.keys()].sort(),
+    };
+  }
+  const vorige = g.localStorage;
+  afterAll(() => {
+    if (vorige === undefined) delete g.localStorage;
+    else g.localStorage = vorige;
+  });
+
+  test("site mét Ads: marketing ingetrokken → _gcl-sleutels weg, rest blijft", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik", _gcl_dc: "x", cc_cookie: "keuze", ander: "blijft" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: true });
+    expect(ls.keys()).toContain("_gcl_ls");
+    // Wissen pas ná de denied-update en de uitschakelvlag voor Ads.
+    const bijWissen: { adStorage?: string; vlag?: unknown }[] = [];
+    const verwijder = ls.removeItem;
+    ls.removeItem = (k: string) => {
+      bijWissen.push({ adStorage: lastUpdate()?.ad_storage, vlag: g["ga-disable-AW-TEST"] });
+      verwijder(k);
+    };
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual(["ander", "cc_cookie"]);
+    expect(bijWissen.length).toBe(2);
+    expect(bijWissen.every((w) => w.adStorage === "denied" && w.vlag === true)).toBe(true);
+  });
+
+  test("site zonder Ads-tag (zoals /vera op prudai.com): laat de klik van de hoofdsite staan", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik van prudai.com" });
+    g.localStorage = ls;
+    initGtag({ measurementId: "G-TEST" });
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual(["_gcl_ls"]);
+  });
+
+  test("marketing toegestaan: klik blijft staan", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: false, marketing: true });
+    expect(ls.keys()).toEqual(["_gcl_ls"]);
+  });
+
+  test("verse paginalading met opgeslagen weigering (alleen noodzakelijk): klik weg, geen tag", () => {
+    const ls = fakeStorage({ _gcl_ls: "oude klik", ander: "blijft" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: false, marketing: false });
+    expect(ls.keys()).toEqual(["ander"]);
+    expect(googleScripts()).toHaveLength(0);
+  });
+
+  test("alleen analytics op de Ads-site: klik weg, GA4 wel", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual([]);
+    expect(configs("G-TEST")).toHaveLength(1);
+  });
+
+  test("geblokkeerde localStorage: geen fout", () => {
+    let gelezen = 0;
+    Object.defineProperty(g, "localStorage", {
+      configurable: true,
+      get() {
+        gelezen++;
+        throw new Error("SecurityError");
+      },
+    });
+    try {
+      initGtag(IDS);
+      expect(() => applyConsent({ analytics: false, marketing: false })).not.toThrow();
+      expect(gelezen).toBeGreaterThan(0); // het wispad is echt geraakt
+    } finally {
+      Object.defineProperty(g, "localStorage", { configurable: true, writable: true, value: undefined });
+    }
+  });
+});

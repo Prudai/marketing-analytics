@@ -8,6 +8,8 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 const aanroepen: string[] = [];
 type WisCookie = { name: RegExp; domain?: string };
 let laatsteConfig: {
+  revision?: number;
+  cookie?: { domain?: string };
   categories: Record<string, { services?: Record<string, { cookies?: WisCookie[] }> }>;
 } | null = null;
 let showPreferencesGooit = false;
@@ -33,7 +35,7 @@ const g = globalThis as unknown as Record<string, unknown>;
 const hadWindow = "window" in g;
 const vorigeWindow = g.window;
 
-const { openCookieVoorkeuren, runConsent, resetConsentForTests, wisDomeinen } = await import(
+const { openCookieVoorkeuren, runConsent, resetConsentForTests, wisDomeinen, toestemmingsDomein } = await import(
   "../src/consent/run"
 );
 const pakketroot = await import("../src");
@@ -124,5 +126,77 @@ describe("cookies wissen bij intrekken", () => {
       expect(lijst.every((c) => String(c.name) === naam)).toBe(true);
       expect(lijst.map((c) => c.domain)).toEqual([undefined, "leo.prudai.com", "prudai.com"]);
     }
+  });
+});
+
+describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
+  const vorigeLocation = g.location;
+  const vorigeDocument = g.document;
+  const schrijf: string[] = [];
+  function opHost(hostname: string) {
+    g.location = { hostname };
+    schrijf.length = 0;
+    g.document = {
+      get cookie() {
+        return "";
+      },
+      set cookie(v: string) {
+        schrijf.push(v);
+        if (v.startsWith("cc_cookie=;")) aanroepen.push("cc-weg");
+      },
+    };
+    laatsteConfig = null;
+  }
+  afterAll(() => {
+    if (vorigeLocation === undefined) delete g.location;
+    else g.location = vorigeLocation;
+    if (vorigeDocument === undefined) delete g.document;
+    else g.document = vorigeDocument;
+  });
+
+  test("toestemmingsDomein: prudai.com op alle Prudai-hosts, anders de standaard", () => {
+    expect(toestemmingsDomein("prudai.com")).toBe("prudai.com");
+    expect(toestemmingsDomein("leo.prudai.com")).toBe("prudai.com");
+    expect(toestemmingsDomein("LEGAL.prudai.com")).toBe("prudai.com");
+    // afsluitende punt: Chromium laat .prudai.com daar niet zien of schrijven
+    expect(toestemmingsDomein("leo.prudai.com.")).toBeUndefined();
+    expect(toestemmingsDomein("prudai-website-x.vercel.app")).toBeUndefined();
+    expect(toestemmingsDomein("notprudai.com")).toBeUndefined();
+    expect(toestemmingsDomein("localhost")).toBeUndefined();
+  });
+
+  test("leo.prudai.com: cc_cookie op .prudai.com, revisie 3, Marketing ook zonder Ads-tag", async () => {
+    opHost("leo.prudai.com");
+    await runConsent({ marketing: false, onConsentChange: () => {} });
+    expect(laatsteConfig!.cookie?.domain).toBe("prudai.com");
+    expect(laatsteConfig!.revision).toBe(3);
+    expect(Object.keys(laatsteConfig!.categories).sort()).toEqual(["analytics", "marketing", "necessary"]);
+  });
+
+  test("subdomein ruimt zijn oude eigen cc_cookie op, vóór run()", async () => {
+    opHost("legal.prudai.com");
+    await runConsent({ onConsentChange: () => {} });
+    const weg = schrijf.filter((c) => c.startsWith("cc_cookie=;") && /expires=Thu, 01 Jan 1970/.test(c));
+    expect(weg.some((c) => !/domain=/.test(c))).toBe(true); // host-only
+    expect(weg.some((c) => /domain=legal\.prudai\.com/.test(c))).toBe(true);
+    expect(weg.some((c) => /domain=\.?prudai\.com(;|$)/.test(c))).toBe(false); // gedeelde blijft
+    // opruimen vóór run(): anders leest de bibliotheek eerst de oude cookie
+    expect(aanroepen.lastIndexOf("cc-weg")).toBeLessThan(aanroepen.indexOf("run"));
+    expect(aanroepen.indexOf("cc-weg")).toBeGreaterThanOrEqual(0);
+  });
+
+  test("prudai.com zelf: gedeelde cookie blijft staan, niets opgeruimd", async () => {
+    opHost("prudai.com");
+    await runConsent({ onConsentChange: () => {} });
+    expect(schrijf.filter((c) => c.startsWith("cc_cookie="))).toEqual([]);
+    expect(laatsteConfig!.cookie?.domain).toBe("prudai.com");
+  });
+
+  test("preview op vercel.app: standaardcookie, niets opgeruimd", async () => {
+    opHost("prudai-website-x.vercel.app");
+    await runConsent({ onConsentChange: () => {} });
+    expect(laatsteConfig!.cookie).toBeUndefined();
+    expect(schrijf.filter((c) => c.startsWith("cc_cookie="))).toEqual([]);
+    expect(laatsteConfig!.revision).toBe(3);
   });
 });

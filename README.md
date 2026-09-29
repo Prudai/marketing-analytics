@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.3 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.4 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -54,8 +54,10 @@ export function App() {
 
 Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as giving it
 (GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
-footer that reopens the preferences window. prudai-website and product-page-alex have one;
-the other consumers listed above do not yet.
+footer that reopens the preferences window. prudai-website, product-page-alex (leo),
+product-page-vera, product-page-zia, legal-center and trust-center have one (v0.4.4 rollout,
+29-09-2026). irma, bever, ordo, maia and research-site run no banner (no GA4 id configured);
+give them the link, and at least v0.4.4, as soon as they get one.
 
 ```tsx
 import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
@@ -83,21 +85,38 @@ React footer that renders later or remounts on a route change never gets it.
   so on subdomains the cookies survived a withdrawal (measured in production 29-09-2026). The
   service cookie lists now carry the host plus every parent domain. A `*.vercel.app` preview does
   not show this problem (gtag sets the cookies on the host there), so verify it on a real subdomain.
-  Two consequences to know: (1) it is not retroactive: leftovers from a withdrawal before v0.4.3
-  are only cleared the next time that visitor changes the choice; (2) `_ga`/`_ga_<stream>` sit on
-  `.prudai.com` and are shared by all Prudai sites, while the consent cookie (`cc_cookie`) is per
-  host. Withdrawing on one site therefore also clears those shared cookies for the other sites
-  (the apex prudai.com already did this before v0.4.3); a site where consent still stands simply
-  starts a new GA client id on the next visit.
+  It is not retroactive: leftovers from a withdrawal before v0.4.3 are only cleared the next
+  time that visitor changes the choice.
+- **Withdrawing marketing also clears the ad click from localStorage (v0.4.4).** Google Ads keeps
+  the click in `_gcl_ls` (localStorage) next to the `_gcl_aw` cookie; the banner only clears
+  cookies. On a site with an Ads tag, every `applyConsent` without marketing consent removes the
+  `_gcl*` localStorage keys. A site without an Ads tag (/vera, /zia on the prudai.com origin)
+  leaves them alone, so it cannot wipe the click of a visitor who consented on prudai.com.
+- **One consent for all Prudai websites (v0.4.4, decision Beau 29-09-2026).** On prudai.com and
+  every `*.prudai.com` host the choice lives in one `cc_cookie` on `.prudai.com` (`GEDEELD_DOMEIN`):
+  accepting or withdrawing on one site applies on all of them, and the banner text says so. That
+  only holds when **every** site with a banner runs v0.4.4 or later: a site on an older version
+  writes its own cookie or another revision. Roll consumers out together.
+  Before, each host wrote its own cookie, but the apex cookie (`Domain=prudai.com`) was visible on
+  the subdomains and won there, so a withdrawal on leo.prudai.com did not survive a reload
+  (measured in production 29-09-2026). Consequences:
+  - every site shows the same categories, Marketing included even without an Ads tag, because a
+    site without the category would drop it from the shared choice when saving; whether an Ads
+    tag loads is still decided by `googleAds`;
+  - `revision` is `CONSENT_REVISIE` (3) everywhere: the scope grew from "this site" to "all Prudai
+    websites", so everyone is asked once more;
+  - a subdomain erases its old own `cc_cookie` (host-only / `Domain=<host>`) before the banner
+    starts, otherwise the library could read the stale one first;
+  - hosts outside prudai.com (`*.vercel.app` previews, localhost) keep the library default (host).
 - On consent (the first click, or on every page load for a returning visitor with stored
   consent) the tag starts: `consent default` all denied, immediately followed by
   `consent update` with the visitor's choice, then `config` and the `gtag.js` script.
   GA4's `config` sends the `page_view` of the page the consent lands on; later SPA route
   changes are measured by GA4's history-change page views.
-- The "analytics" category configures GA4. With `googleAds` configured the banner has a
-  "Marketing" category; only that one configures the Google Ads tag and grants
-  `ad_storage`/`ad_user_data`/`ad_personalization`. Enabling the category bumps the consent
-  `revision`, so returning visitors are asked again once.
+- The "analytics" category configures GA4. The "Marketing" category (on every site since v0.4.4)
+  configures the Google Ads tag, but only on a site with `googleAds` configured, and grants
+  `ad_storage`/`ad_user_data`/`ad_personalization`. Change `CONSENT_REVISIE` whenever a
+  category or the scope changes, so returning visitors are asked again once.
 - `trackEvent` and the other helpers send only to the tags the visitor consented to
   (`send_to`); without consent they do nothing, and nothing is queued for later. So
   `ads_conversion_*` reaches Google Ads only with marketing consent.

@@ -1,5 +1,44 @@
 import * as CookieConsent from "vanilla-cookieconsent";
 /**
+ * Toestemmingsrevisie, gelijk op alle sites. Een opgeslagen keuze met een andere
+ * revisie telt niet meer en de banner vraagt opnieuw. 3 sinds v0.4.4: de keuze
+ * geldt sindsdien voor alle Prudai-websites samen (zie `GEDEELD_DOMEIN`), een
+ * ruimere reikwijdte dan "deze site", dus iedereen wordt één keer opnieuw gevraagd.
+ */
+export const CONSENT_REVISIE = 3;
+/**
+ * Eén toestemming voor alle Prudai-websites (besluit Beau 29-09-2026). De keuze
+ * staat in `cc_cookie` op `.prudai.com`, zodat akkoord of intrekken op één site
+ * direct op alle `*.prudai.com`-sites geldt. Daarvóór schreef elke host zijn eigen
+ * cookie, maar die van prudai.com (`Domain=prudai.com`) was ook op de subdomeinen
+ * zichtbaar en won daar: intrekken op leo.prudai.com hield na herladen geen stand
+ * (gemeten op productie 29-09-2026).
+ */
+export const GEDEELD_DOMEIN = "prudai.com";
+/** Domein voor `cc_cookie`: `prudai.com` op de Prudai-sites, anders de standaard. */
+export function toestemmingsDomein(host) {
+    // Een host met afsluitende punt ("prudai.com.") ziet de cookie op .prudai.com
+    // niet en mag hem ook niet schrijven (gemeten in Chromium): daar de standaard.
+    const h = host.toLowerCase();
+    return h === GEDEELD_DOMEIN || h.endsWith(`.${GEDEELD_DOMEIN}`) ? GEDEELD_DOMEIN : undefined;
+}
+/**
+ * Oude toestemming per subdomein opruimen. Tot v0.4.4 schreef bijvoorbeeld
+ * leo.prudai.com een eigen `cc_cookie` (host-only of `Domain=leo.prudai.com`). Die
+ * zou naast de gedeelde cookie blijven staan, en de bibliotheek leest de eerste
+ * `cc_cookie` die ze vindt; de oudste kan dus winnen. Op prudai.com zelf is de
+ * bestaande cookie al de gedeelde, die blijft staan.
+ */
+function ruimOudeToestemmingOp(host) {
+    if (typeof document === "undefined")
+        return;
+    if (toestemmingsDomein(host) !== GEDEELD_DOMEIN || host === GEDEELD_DOMEIN)
+        return;
+    const weg = "cc_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+    document.cookie = weg;
+    document.cookie = `${weg}; domain=${host}`;
+}
+/**
  * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
  * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
  */
@@ -34,11 +73,13 @@ function wisbareCookies(naam) {
     return [{ name: naam }, ...wisDomeinen(host).map((domain) => ({ name: naam, domain }))];
 }
 export async function runConsent(options) {
-    const includeMarketing = options.marketing === true;
+    const host = typeof location === "undefined" ? "" : location.hostname.toLowerCase();
+    ruimOudeToestemmingOp(host);
+    const domein = toestemmingsDomein(host);
     const applyCurrent = () => {
         options.onConsentChange({
             analytics: CookieConsent.acceptedCategory("analytics"),
-            marketing: includeMarketing && CookieConsent.acceptedCategory("marketing"),
+            marketing: CookieConsent.acceptedCategory("marketing"),
         });
     };
     const categories = {
@@ -52,16 +93,16 @@ export async function runConsent(options) {
             },
         },
     };
-    if (includeMarketing) {
-        categories.marketing = {
-            services: {
-                googleAds: {
-                    label: "Google Ads",
-                    cookies: wisbareCookies(/^_gcl/),
-                },
+    // Op elke site, ook zonder Ads-tag: de keuze is gedeeld, en een site zonder
+    // deze categorie zou haar bij opslaan uit de gedeelde keuze wissen.
+    categories.marketing = {
+        services: {
+            googleAds: {
+                label: "Google Ads",
+                cookies: wisbareCookies(/^_gcl/),
             },
-        };
-    }
+        },
+    };
     const nlSections = [
         {
             title: "Noodzakelijk",
@@ -73,15 +114,11 @@ export async function runConsent(options) {
             description: "Helpen ons te begrijpen hoe bezoekers de site gebruiken (geaggregeerd, niet persoonlijk identificeerbaar).",
             linkedCategory: "analytics",
         },
-        ...(includeMarketing
-            ? [
-                {
-                    title: "Marketing",
-                    description: "Meten of onze advertenties (Google Ads) tot een aanvraag of aanmelding leiden. We bouwen geen persoonlijke advertentieprofielen op.",
-                    linkedCategory: "marketing",
-                },
-            ]
-            : []),
+        {
+            title: "Marketing",
+            description: "Meten of onze advertenties (Google Ads) tot een aanvraag of aanmelding leiden. Met deze toestemming mag Google de gegevens ook gebruiken voor gepersonaliseerde advertenties, zoals advertenties van Prudai die je later op andere websites ziet.",
+            linkedCategory: "marketing",
+        },
     ];
     const enSections = [
         {
@@ -94,23 +131,19 @@ export async function runConsent(options) {
             description: "Help us understand how visitors use the site (aggregated, not personally identifiable).",
             linkedCategory: "analytics",
         },
-        ...(includeMarketing
-            ? [
-                {
-                    title: "Marketing",
-                    description: "Measure whether our ads (Google Ads) lead to a request or sign-up. We do not build personal advertising profiles.",
-                    linkedCategory: "marketing",
-                },
-            ]
-            : []),
+        {
+            title: "Marketing",
+            description: "Measure whether our ads (Google Ads) lead to a request or sign-up. With this consent Google may also use the data for personalised advertising, such as Prudai ads you later see on other websites.",
+            linkedCategory: "marketing",
+        },
     ];
     await CookieConsent.run({
-        // Stored consent is only re-requested on a revision mismatch. Sites that
-        // enable the marketing category must re-ask returning visitors (their
-        // cc_cookie predates the category and would deny ads consent for up to
-        // 182 days). Bump this number whenever a consent-relevant category is
-        // added or changed.
-        revision: includeMarketing ? 2 : 0,
+        // Stored consent is only re-requested on a revision mismatch. Bump
+        // CONSENT_REVISIE whenever a consent-relevant category or the scope changes.
+        // Every site has the same categories and revision, because the choice is
+        // shared across all Prudai sites (GEDEELD_DOMEIN).
+        revision: CONSENT_REVISIE,
+        ...(domein ? { cookie: { domain: domein } } : {}),
         guiOptions: {
             consentModal: { layout: "box inline", position: "bottom right" },
             preferencesModal: { layout: "box", position: "right" },
@@ -124,8 +157,8 @@ export async function runConsent(options) {
             translations: {
                 nl: {
                     consentModal: {
-                        title: "Cookies op deze site",
-                        description: "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze site gebruiken, zodat we 'm kunnen verbeteren. Essentiële functies werken altijd zonder cookies.",
+                        title: "Cookies op de websites van Prudai",
+                        description: "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com); je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
                         acceptAllBtn: "Alles accepteren",
                         acceptNecessaryBtn: "Alleen noodzakelijk",
                         showPreferencesBtn: "Voorkeuren",
@@ -144,8 +177,8 @@ export async function runConsent(options) {
                 },
                 en: {
                     consentModal: {
-                        title: "Cookies on this site",
-                        description: "We use analytics cookies to understand how visitors use our site so we can improve it. Essential features always work without cookies.",
+                        title: "Cookies on Prudai websites",
+                        description: "We use analytics cookies to understand how visitors use our websites and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com); you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
                         acceptAllBtn: "Accept all",
                         acceptNecessaryBtn: "Only necessary",
                         showPreferencesBtn: "Preferences",
