@@ -7,6 +7,11 @@ import type { ConsentState } from "../ga4/init";
  * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
  */
 let bannerGestart = false;
+/**
+ * Gooide `showPreferences()` al eens? Dan heeft de bibliotheek geen venster (bij
+ * een bot stopt `run()` vroeg) en doet elke volgende aanroep stil niets.
+ */
+let vensterOnbruikbaar = false;
 
 export interface RunConsentOptions {
   policyHref?: string;
@@ -178,11 +183,15 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
  * een geautomatiseerde browser, die vanilla-cookieconsent overslaat).
  */
 export function openCookieVoorkeuren(): boolean {
-  if (typeof window === "undefined" || !bannerGestart) return false;
+  if (typeof window === "undefined" || !bannerGestart || vensterOnbruikbaar) return false;
   try {
     CookieConsent.showPreferences();
     return true;
   } catch {
+    // De bibliotheek zet haar "venster open"-vlag vóór ze valt; daarna doet
+    // showPreferences() niets meer maar gooit ook niet. Zonder deze vlag zou
+    // een tweede aanroep dus `true` geven zonder venster.
+    vensterOnbruikbaar = true;
     return false;
   }
 }
@@ -190,6 +199,7 @@ export function openCookieVoorkeuren(): boolean {
 /** @internal Alleen voor tests: terug naar een pagina zonder banner. Niet via de pakketroot. */
 export function resetConsentForTests(): void {
   bannerGestart = false;
+  vensterOnbruikbaar = false;
 }
 
 export { CookieConsent };

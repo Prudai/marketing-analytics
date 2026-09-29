@@ -157,7 +157,12 @@ export function applyConsent({ analytics, marketing }: ConsentState): void {
   // uitschakelvlag voor GA4, zodat ook de automatische page_views van
   // routewissels stoppen. Voor Google Ads is die vlag niet gedocumenteerd; daar
   // doen de denied-signalen en de send_to-poort in events.ts het werk.
-  // Gemeten 29-09-2026: na intrekken 0 verzoeken naar Google.
+  // Gemeten 29-09-2026: routewissels, scrollen en herladen na intrekken geven
+  // 0 verzoeken naar Google. Eén uitzondering: events van vóór het intrekken die
+  // gtag nog niet verstuurd had (GA4 bundelt een paar seconden), gaan nog één
+  // keer mee, een paar seconden later en met de toestemmingsstand van toen
+  // (gcs=G111). gtag heeft geen publieke manier om die wachtrij te legen; de
+  // verwerking vóór het intrekken blijft rechtmatig (AVG art. 7 lid 3).
   const flags = window as unknown as Record<string, boolean>;
   if (measurementId) flags[`ga-disable-${measurementId}`] = !current.analytics;
   if (adsConversionId) flags[`ga-disable-${adsConversionId}`] = !current.marketing;

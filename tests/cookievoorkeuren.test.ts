@@ -11,9 +11,13 @@ mock.module("vanilla-cookieconsent", () => ({
   },
   showPreferences: () => {
     aanroepen.push("showPreferences");
-    // Zo reageert de echte bibliotheek als run() vroeg stopte (bot/webdriver):
-    // er is geen venster, en hij valt over een ontbrekend element.
-    if (showPreferencesGooit) throw new TypeError("Cannot read properties of undefined");
+    // Zo reageert de echte bibliotheek als run() vroeg stopte (bot): er is geen
+    // venster, ze valt over een ontbrekend element, en omdat ze haar "open"-vlag
+    // al gezet had doet elke volgende aanroep stil niets (gemeten in jsdom).
+    if (showPreferencesGooit) {
+      showPreferencesGooit = false;
+      throw new TypeError("Cannot read properties of undefined");
+    }
   },
   acceptedCategory: () => false,
 }));
@@ -63,11 +67,17 @@ describe("openCookieVoorkeuren", () => {
     expect(aanroepen.filter((a) => a === "showPreferences")).toHaveLength(2);
   });
 
-  test("gooit niet als de bibliotheek geen venster heeft (bot, webdriver)", async () => {
+  test("gooit niet als de bibliotheek geen venster heeft (bot), en blijft daarna false", async () => {
     await runConsent({ onConsentChange: () => {} });
     showPreferencesGooit = true;
-    expect(() => openCookieVoorkeuren()).not.toThrow();
+    let eerste: boolean | undefined;
+    expect(() => {
+      eerste = openCookieVoorkeuren();
+    }).not.toThrow();
+    expect(eerste).toBe(false);
+    // De bibliotheek gooit maar één keer; daarna zou ze stil niets doen.
     expect(openCookieVoorkeuren()).toBe(false);
+    expect(aanroepen.filter((a) => a === "showPreferences")).toHaveLength(1);
   });
 
   test("doet niets buiten de browser", async () => {
