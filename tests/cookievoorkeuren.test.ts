@@ -1,8 +1,10 @@
 import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 
 // vanilla-cookieconsent wordt nagebootst: het echte venster vraagt een DOM, en
-// hier gaat het om de koppeling footerlink → showPreferences(). Het echte
-// venster is in een browser gemeten op de previews (29-09-2026).
+// hier gaat het om de koppeling footerlink → showPreferences() en om de vorm van
+// de cookielijsten die we aan run() geven. Het echte venster is in een browser
+// gemeten op de previews; het echte wissen op het bovenliggende domein in
+// Chromium met de echte bibliotheek op een nagebootst leo.prudai.com (29-09-2026).
 const aanroepen: string[] = [];
 type WisCookie = { name: RegExp; domain?: string };
 let laatsteConfig: {

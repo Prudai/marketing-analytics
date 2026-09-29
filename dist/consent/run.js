@@ -15,7 +15,8 @@ let vensterOnbruikbaar = false;
  * op het registreerbare domein (`.prudai.com`), ook als de bezoeker op een
  * subdomein zit, maar vanilla-cookieconsent wist zonder `domain` alleen op
  * `location.hostname`. Daardoor bleven de cookies na intrekken staan op
- * leo.prudai.com (gemeten op productie 29-09-2026). Een publiek suffix
+ * leo.prudai.com (gemeten op productie 29-09-2026). De host zelf staat er voor
+ * de volledigheid in; de entry zonder `domain` dekt host-only en `.host` al. Een publiek suffix
  * (vercel.app) weigert de browser gewoon; een IP-adres of `localhost` heeft
  * geen bovenliggend domein.
  */

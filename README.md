@@ -83,6 +83,12 @@ React footer that renders later or remounts on a route change never gets it.
   so on subdomains the cookies survived a withdrawal (measured in production 29-09-2026). The
   service cookie lists now carry the host plus every parent domain. A `*.vercel.app` preview does
   not show this problem (gtag sets the cookies on the host there), so verify it on a real subdomain.
+  Two consequences to know: (1) it is not retroactive: leftovers from a withdrawal before v0.4.3
+  are only cleared the next time that visitor changes the choice; (2) `_ga`/`_ga_<stream>` sit on
+  `.prudai.com` and are shared by all Prudai sites, while the consent cookie (`cc_cookie`) is per
+  host. Withdrawing on one site therefore also clears those shared cookies for the other sites
+  (the apex prudai.com already did this before v0.4.3); a site where consent still stands simply
+  starts a new GA client id on the next visit.
 - On consent (the first click, or on every page load for a returning visitor with stored
   consent) the tag starts: `consent default` all denied, immediately followed by
   `consent update` with the visitor's choice, then `config` and the `gtag.js` script.
