@@ -56,8 +56,8 @@ Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as g
 (GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
 footer that reopens the preferences window. prudai-website, product-page-alex (leo),
 product-page-vera, product-page-zia, legal-center and trust-center have one (v0.4.4 rollout,
-29-09-2026). irma, bever, ordo and research-site run no banner (no GA4 id configured); give
-them the link as soon as they get one.
+29-09-2026). irma, bever, ordo, maia and research-site run no banner (no GA4 id configured);
+give them the link, and at least v0.4.4, as soon as they get one.
 
 ```tsx
 import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
@@ -94,7 +94,9 @@ React footer that renders later or remounts on a route change never gets it.
   leaves them alone, so it cannot wipe the click of a visitor who consented on prudai.com.
 - **One consent for all Prudai websites (v0.4.4, decision Beau 29-09-2026).** On prudai.com and
   every `*.prudai.com` host the choice lives in one `cc_cookie` on `.prudai.com` (`GEDEELD_DOMEIN`):
-  accepting or withdrawing on one site applies on all of them, and the banner text says so.
+  accepting or withdrawing on one site applies on all of them, and the banner text says so. That
+  only holds when **every** site with a banner runs v0.4.4 or later: a site on an older version
+  writes its own cookie or another revision. Roll consumers out together.
   Before, each host wrote its own cookie, but the apex cookie (`Domain=prudai.com`) was visible on
   the subdomains and won there, so a withdrawal on leo.prudai.com did not survive a reload
   (measured in production 29-09-2026). Consequences:

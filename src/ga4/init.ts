@@ -152,7 +152,6 @@ export function applyConsent({ analytics, marketing }: ConsentState): void {
     marketing: marketing && Boolean(adsConversionId),
   };
 
-
   if (!started) {
     // Basic: zonder toestemming blijft de tag helemaal weg. Een eerder bewaarde
     // advertentieklik gaat dan ook weg (verse paginalading met opgeslagen

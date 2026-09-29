@@ -34,7 +34,6 @@ export function initAnalytics(config: InitAnalyticsConfig): void {
 
     void runConsent({
       policyHref: config.consent?.policyHref,
-      marketing: Boolean(adsConversionId),
       onConsentChange: applyConsent,
     });
   }

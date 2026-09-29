@@ -357,8 +357,17 @@ describe("intrekken ruimt de advertentieklik in localStorage op (v0.4.4)", () =>
     initGtag(IDS);
     applyConsent({ analytics: true, marketing: true });
     expect(ls.keys()).toContain("_gcl_ls");
+    // Wissen pas ná de denied-update en de uitschakelvlag voor Ads.
+    const bijWissen: { adStorage?: string; vlag?: unknown }[] = [];
+    const verwijder = ls.removeItem;
+    ls.removeItem = (k: string) => {
+      bijWissen.push({ adStorage: lastUpdate()?.ad_storage, vlag: g["ga-disable-AW-TEST"] });
+      verwijder(k);
+    };
     applyConsent({ analytics: true, marketing: false });
     expect(ls.keys()).toEqual(["ander", "cc_cookie"]);
+    expect(bijWissen.length).toBe(2);
+    expect(bijWissen.every((w) => w.adStorage === "denied" && w.vlag === true)).toBe(true);
   });
 
   test("site zonder Ads-tag (zoals /vera op prudai.com): laat de klik van de hoofdsite staan", () => {

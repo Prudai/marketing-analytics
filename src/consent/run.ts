@@ -22,7 +22,9 @@ export const GEDEELD_DOMEIN = "prudai.com";
 
 /** Domein voor `cc_cookie`: `prudai.com` op de Prudai-sites, anders de standaard. */
 export function toestemmingsDomein(host: string): string | undefined {
-  const h = host.toLowerCase().replace(/\.$/, "");
+  // Een host met afsluitende punt ("prudai.com.") ziet de cookie op .prudai.com
+  // niet en mag hem ook niet schrijven (gemeten in Chromium): daar de standaard.
+  const h = host.toLowerCase();
   return h === GEDEELD_DOMEIN || h.endsWith(`.${GEDEELD_DOMEIN}`) ? GEDEELD_DOMEIN : undefined;
 }
 
@@ -89,15 +91,14 @@ export interface RunConsentOptions {
 }
 
 export async function runConsent(options: RunConsentOptions): Promise<void> {
-  const includeMarketing = true;
-  const host = typeof location === "undefined" ? "" : location.hostname;
+  const host = typeof location === "undefined" ? "" : location.hostname.toLowerCase();
   ruimOudeToestemmingOp(host);
   const domein = toestemmingsDomein(host);
 
   const applyCurrent = () => {
     options.onConsentChange({
       analytics: CookieConsent.acceptedCategory("analytics"),
-      marketing: includeMarketing && CookieConsent.acceptedCategory("marketing"),
+      marketing: CookieConsent.acceptedCategory("marketing"),
     });
   };
 
@@ -112,16 +113,16 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
       },
     },
   };
-  if (includeMarketing) {
-    categories.marketing = {
-      services: {
-        googleAds: {
-          label: "Google Ads",
-          cookies: wisbareCookies(/^_gcl/),
-        },
+  // Op elke site, ook zonder Ads-tag: de keuze is gedeeld, en een site zonder
+  // deze categorie zou haar bij opslaan uit de gedeelde keuze wissen.
+  categories.marketing = {
+    services: {
+      googleAds: {
+        label: "Google Ads",
+        cookies: wisbareCookies(/^_gcl/),
       },
-    };
-  }
+    },
+  };
 
   const nlSections = [
     {
@@ -136,16 +137,12 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
         "Helpen ons te begrijpen hoe bezoekers de site gebruiken (geaggregeerd, niet persoonlijk identificeerbaar).",
       linkedCategory: "analytics",
     },
-    ...(includeMarketing
-      ? [
-          {
-            title: "Marketing",
-            description:
-              "Meten of onze advertenties (Google Ads) tot een aanvraag of aanmelding leiden. We bouwen geen persoonlijke advertentieprofielen op.",
-            linkedCategory: "marketing",
-          },
-        ]
-      : []),
+    {
+      title: "Marketing",
+      description:
+        "Meten of onze advertenties (Google Ads) tot een aanvraag of aanmelding leiden. Met deze toestemming mag Google de gegevens ook gebruiken voor gepersonaliseerde advertenties, zoals advertenties van Prudai die je later op andere websites ziet.",
+      linkedCategory: "marketing",
+    },
   ];
   const enSections = [
     {
@@ -159,16 +156,12 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
         "Help us understand how visitors use the site (aggregated, not personally identifiable).",
       linkedCategory: "analytics",
     },
-    ...(includeMarketing
-      ? [
-          {
-            title: "Marketing",
-            description:
-              "Measure whether our ads (Google Ads) lead to a request or sign-up. We do not build personal advertising profiles.",
-            linkedCategory: "marketing",
-          },
-        ]
-      : []),
+    {
+      title: "Marketing",
+      description:
+        "Measure whether our ads (Google Ads) lead to a request or sign-up. With this consent Google may also use the data for personalised advertising, such as Prudai ads you later see on other websites.",
+      linkedCategory: "marketing",
+    },
   ];
 
   await CookieConsent.run({
@@ -193,7 +186,7 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
           consentModal: {
             title: "Cookies op de websites van Prudai",
             description:
-              "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken, zodat we ze kunnen verbeteren. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com) en je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
+              "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com); je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
             acceptAllBtn: "Alles accepteren",
             acceptNecessaryBtn: "Alleen noodzakelijk",
             showPreferencesBtn: "Voorkeuren",
@@ -214,7 +207,7 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
           consentModal: {
             title: "Cookies on Prudai websites",
             description:
-              "We use analytics cookies to understand how visitors use our websites so we can improve them. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com) and you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
+              "We use analytics cookies to understand how visitors use our websites and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com); you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
             acceptAllBtn: "Accept all",
             acceptNecessaryBtn: "Only necessary",
             showPreferencesBtn: "Preferences",

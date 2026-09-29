@@ -142,6 +142,7 @@ describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
       },
       set cookie(v: string) {
         schrijf.push(v);
+        if (v.startsWith("cc_cookie=;")) aanroepen.push("cc-weg");
       },
     };
     laatsteConfig = null;
@@ -156,7 +157,9 @@ describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
   test("toestemmingsDomein: prudai.com op alle Prudai-hosts, anders de standaard", () => {
     expect(toestemmingsDomein("prudai.com")).toBe("prudai.com");
     expect(toestemmingsDomein("leo.prudai.com")).toBe("prudai.com");
-    expect(toestemmingsDomein("LEGAL.prudai.com.")).toBe("prudai.com");
+    expect(toestemmingsDomein("LEGAL.prudai.com")).toBe("prudai.com");
+    // afsluitende punt: Chromium laat .prudai.com daar niet zien of schrijven
+    expect(toestemmingsDomein("leo.prudai.com.")).toBeUndefined();
     expect(toestemmingsDomein("prudai-website-x.vercel.app")).toBeUndefined();
     expect(toestemmingsDomein("notprudai.com")).toBeUndefined();
     expect(toestemmingsDomein("localhost")).toBeUndefined();
@@ -177,7 +180,9 @@ describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
     expect(weg.some((c) => !/domain=/.test(c))).toBe(true); // host-only
     expect(weg.some((c) => /domain=legal\.prudai\.com/.test(c))).toBe(true);
     expect(weg.some((c) => /domain=\.?prudai\.com(;|$)/.test(c))).toBe(false); // gedeelde blijft
-    expect(aanroepen.indexOf("run")).toBeGreaterThanOrEqual(0);
+    // opruimen vóór run(): anders leest de bibliotheek eerst de oude cookie
+    expect(aanroepen.lastIndexOf("cc-weg")).toBeLessThan(aanroepen.indexOf("run"));
+    expect(aanroepen.indexOf("cc-weg")).toBeGreaterThanOrEqual(0);
   });
 
   test("prudai.com zelf: gedeelde cookie blijft staan, niets opgeruimd", async () => {
