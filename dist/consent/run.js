@@ -4,6 +4,11 @@ import * as CookieConsent from "vanilla-cookieconsent";
  * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
  */
 let bannerGestart = false;
+/**
+ * Gooide `showPreferences()` al eens? Dan heeft de bibliotheek geen venster (bij
+ * een bot stopt `run()` vroeg) en doet elke volgende aanroep stil niets.
+ */
+let vensterOnbruikbaar = false;
 export async function runConsent(options) {
     const includeMarketing = options.marketing === true;
     const applyCurrent = () => {
@@ -155,19 +160,24 @@ export async function runConsent(options) {
  * een geautomatiseerde browser, die vanilla-cookieconsent overslaat).
  */
 export function openCookieVoorkeuren() {
-    if (typeof window === "undefined" || !bannerGestart)
+    if (typeof window === "undefined" || !bannerGestart || vensterOnbruikbaar)
         return false;
     try {
         CookieConsent.showPreferences();
         return true;
     }
     catch {
+        // De bibliotheek zet haar "venster open"-vlag vóór ze valt; daarna doet
+        // showPreferences() niets meer maar gooit ook niet. Zonder deze vlag zou
+        // een tweede aanroep dus `true` geven zonder venster.
+        vensterOnbruikbaar = true;
         return false;
     }
 }
 /** @internal Alleen voor tests: terug naar een pagina zonder banner. Niet via de pakketroot. */
 export function resetConsentForTests() {
     bannerGestart = false;
+    vensterOnbruikbaar = false;
 }
 export { CookieConsent };
 //# sourceMappingURL=run.js.map
