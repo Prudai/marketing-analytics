@@ -147,8 +147,9 @@ export function applyConsent({ analytics, marketing }) {
     }
     if (measurementId && current.analytics) {
         if (!configured.has(measurementId)) {
-            // `config` stuurt zelf de page_view van de pagina waarop het akkoord
-            // valt; routewissels daarna meet GA4 via de history-events.
+            // Normaal stuurt `config` zelf de page_view van de pagina waarop het
+            // akkoord valt (bij campagne-herstel doen we dat hieronder als event);
+            // routewissels daarna meet GA4 via de history-events.
             configured.add(measurementId);
             const restored = restoredLocation();
             // Let op: een sleutel `send_page_view: undefined` zet de automatische

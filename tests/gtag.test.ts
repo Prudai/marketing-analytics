@@ -230,7 +230,8 @@ describe("Consent Mode basic — na akkoord", () => {
 });
 
 describe("akkoord na doorklikken binnen de SPA", () => {
-  const LANDING = "https://example.test/?gclid=abc123&utm_source=google&utm_medium=cpc&x=1";
+  const LANDING =
+    "https://example.test/?gclid=abc123&gbraid=gb1&utm_source=google&utm_medium=cpc&x=1";
 
   test("GA4 krijgt gclid/utm van de landingspagina terug in de eerste page_view", () => {
     g.location = { href: LANDING };
@@ -248,6 +249,7 @@ describe("akkoord na doorklikken binnen de SPA", () => {
     expect(loc.pathname).toBe("/contact");
     expect(loc.searchParams.get("y")).toBe("2");
     expect(loc.searchParams.get("gclid")).toBe("abc123");
+    expect(loc.searchParams.get("gbraid")).toBe("gb1");
     expect(loc.searchParams.get("utm_source")).toBe("google");
     expect(loc.searchParams.get("utm_medium")).toBe("cpc");
     expect(loc.searchParams.has("x")).toBe(false);

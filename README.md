@@ -79,7 +79,10 @@ export function App() {
   puts them back into GA4's first `page_view` (`page_location`), so GA4 still counts the
   visit as ad/campaign traffic. Google Ads' conversion linker reads the real address bar
   only, so in that flow no `_gcl_aw` cookie is written and a later conversion is not tied
-  to the ad click. Our own attribution (`leesHerkomst()`, see below) is unaffected.
+  to the ad click. **This is a change from v0.3.2**, where gtag.js already ran on the
+  landing page and wrote `_gcl_aw` once consent came (measured 29-09-2026). Accepting on
+  the landing page itself still writes it. Our own attribution (`leesHerkomst()`, see
+  below, stored with every form) is unaffected.
 - Why basic and not advanced: in advanced mode the tag sent cookieless pings before any
   click. Most of those came from Microsoft 365 link scanners opening the links in our
   mails (29-09-2026: 775 of 1,283 GA4 sessions in 28 days, all "Unassigned"). The
