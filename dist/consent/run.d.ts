@@ -1,5 +1,17 @@
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentState } from "../ga4/init";
+/**
+ * Domeinen waarop een cookie gewist moet worden: de host en elk bovenliggend
+ * domein (leo.prudai.com → leo.prudai.com, prudai.com). gtag zet `_ga`/`_gcl_*`
+ * op het registreerbare domein (`.prudai.com`), ook als de bezoeker op een
+ * subdomein zit, maar vanilla-cookieconsent wist zonder `domain` alleen op
+ * `location.hostname`. Daardoor bleven de cookies na intrekken staan op
+ * leo.prudai.com (gemeten op productie 29-09-2026). De host zelf staat er voor
+ * de volledigheid in; de entry zonder `domain` dekt host-only en `.host` al. Een publiek suffix
+ * (vercel.app) weigert de browser gewoon; een IP-adres of `localhost` heeft
+ * geen bovenliggend domein.
+ */
+export declare function wisDomeinen(host: string): string[];
 export interface RunConsentOptions {
     policyHref?: string;
     /** Show a Marketing category (Google Ads conversion measurement). */

@@ -9,6 +9,30 @@ let bannerGestart = false;
  * een bot stopt `run()` vroeg) en doet elke volgende aanroep stil niets.
  */
 let vensterOnbruikbaar = false;
+/**
+ * Domeinen waarop een cookie gewist moet worden: de host en elk bovenliggend
+ * domein (leo.prudai.com → leo.prudai.com, prudai.com). gtag zet `_ga`/`_gcl_*`
+ * op het registreerbare domein (`.prudai.com`), ook als de bezoeker op een
+ * subdomein zit, maar vanilla-cookieconsent wist zonder `domain` alleen op
+ * `location.hostname`. Daardoor bleven de cookies na intrekken staan op
+ * leo.prudai.com (gemeten op productie 29-09-2026). De host zelf staat er voor
+ * de volledigheid in; de entry zonder `domain` dekt host-only en `.host` al. Een publiek suffix
+ * (vercel.app) weigert de browser gewoon; een IP-adres of `localhost` heeft
+ * geen bovenliggend domein.
+ */
+export function wisDomeinen(host) {
+    if (!host || /^[\d.]+$/.test(host) || host.includes(":"))
+        return [];
+    const delen = host.split(".").filter(Boolean);
+    const uit = [];
+    for (let i = 0; i + 2 <= delen.length; i++)
+        uit.push(delen.slice(i).join("."));
+    return uit;
+}
+function wisbareCookies(naam) {
+    const host = typeof location === "undefined" ? "" : location.hostname;
+    return [{ name: naam }, ...wisDomeinen(host).map((domain) => ({ name: naam, domain }))];
+}
 export async function runConsent(options) {
     const includeMarketing = options.marketing === true;
     const applyCurrent = () => {
@@ -23,7 +47,7 @@ export async function runConsent(options) {
             services: {
                 ga4: {
                     label: "Google Analytics 4",
-                    cookies: [{ name: /^_ga/ }],
+                    cookies: wisbareCookies(/^_ga/),
                 },
             },
         },
@@ -33,7 +57,7 @@ export async function runConsent(options) {
             services: {
                 googleAds: {
                     label: "Google Ads",
-                    cookies: [{ name: /^_gcl/ }],
+                    cookies: wisbareCookies(/^_gcl/),
                 },
             },
         };
