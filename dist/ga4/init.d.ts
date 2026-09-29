@@ -39,8 +39,12 @@ export declare function initGtag({ measurementId, adsConversionId, debug }: Gtag
  * wijziging van de voorkeuren.
  */
 export declare function applyConsent({ analytics, marketing }: ConsentState): void;
-/** Tag-id's waar een event nu heen mag, volgens de toestemming van de bezoeker. */
-export declare function consentedTargets(): string[];
-/** Alleen voor tests: terug naar een verse paginalading. */
+/**
+ * Tag-id's waar een event nu heen mag, volgens de toestemming van de bezoeker.
+ * `null` = dit pakket beheert de Google-tag niet (geen `initAnalytics` met een
+ * GA4- of Ads-id); wie dan zelf `window.gtag` zet, beheert ook de toestemming.
+ */
+export declare function consentedTargets(): string[] | null;
+/** @internal Alleen voor tests: terug naar een verse paginalading. Niet via de pakketroot. */
 export declare function resetGtagForTests(): void;
 //# sourceMappingURL=init.d.ts.map

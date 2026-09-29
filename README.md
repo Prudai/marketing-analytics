@@ -2,7 +2,7 @@
 
 Shared analytics, consent (via [vanilla-cookieconsent v3](https://cookieconsent.orestbida.com)), and error-tracking (GlitchTip) for Prudai marketing sites.
 
-Consumed by `prudai-website`, `product-page-alex`, `product-page-vera`, `product-page-zia`, `legal-center`, and `trust-center`.
+Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-page-vera`, `product-page-zia`, `product-page-irma`, `product-page-bever`, `product-page-ordo`, `legal-center`, `trust-center` and `research-site`. Each pins a git tag, so a new version reaches a site only when that site bumps its pin.
 
 ## Install
 
@@ -33,7 +33,7 @@ Event helpers:
 ```ts
 import { trackCta, trackOutboundClick } from "@prudai/marketing-analytics";
 
-trackCta("Probeer Alex", "hero");
+trackCta("Probeer LEO", "hero");
 trackOutboundClick("https://app.prudai.com/signup", "hero-signup");
 ```
 
@@ -69,13 +69,30 @@ export function App() {
 - `trackEvent` and the other helpers send only to the tags the visitor consented to
   (`send_to`); without consent they do nothing, and nothing is queued for later. So
   `ads_conversion_*` reaches Google Ads only with marketing consent.
-- Withdrawing consent sends `consent update` denied and sets Google's
-  `ga-disable-<id>` flag for the withdrawn tag, so a tag that is already loaded stops
-  sending hits. The script itself stays on the page until the next load.
+- Withdrawing consent sends `consent update` denied and sets `ga-disable-<id>` for the
+  withdrawn tag. For GA4 that is Google's documented opt-out, so the automatic page views
+  of later route changes stop too; for Google Ads the flag is not documented and the
+  `send_to` gating plus the denied ad signals do the work. Measured 29-09-2026: 0 requests
+  to Google after withdrawal. The script itself stays on the page until the next load.
+- Consent after navigating inside the SPA: the gclid/utm of the landing URL are no longer
+  in the address bar when the tag starts. The package remembers them from page load and
+  puts them back into GA4's first `page_view` (`page_location`), so GA4 still counts the
+  visit as ad/campaign traffic. Google Ads' conversion linker reads the real address bar
+  only, so in that flow no `_gcl_aw` cookie is written and a later conversion is not tied
+  to the ad click. Our own attribution (`leesHerkomst()`, see below) is unaffected.
 - Why basic and not advanced: in advanced mode the tag sent cookieless pings before any
   click. Most of those came from Microsoft 365 link scanners opening the links in our
   mails (29-09-2026: 775 of 1,283 GA4 sessions in 28 days, all "Unassigned"). The
   modelling advanced mode exists for needs a volume we do not reach.
+
+## Breaking in v0.4.0 (consumer tests)
+
+`trackEvent`/`trackCta`/`trackOutboundClick`/`trackScrollDepth` now check consent. When
+`initAnalytics` configured a GA4 or Ads id, an event without consent is dropped, and with
+consent it gets a `send_to` with the consented ids. A test that only sets `window.gtag`
+(without `initAnalytics`) still sees the old behaviour: the event passes through unchanged.
+A test that calls `initAnalytics` with ids and then expects events on `window.gtag` needs to
+mock the package instead.
 
 ## Development
 

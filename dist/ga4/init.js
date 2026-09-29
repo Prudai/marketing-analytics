@@ -21,6 +21,54 @@ let started = false;
 const configured = new Set();
 /** Wat de bezoeker nu toestaat, beperkt tot de id's die er zijn. */
 let current = { analytics: false, marketing: false };
+/** Advertentieklik- en campagneparameters van de URL waarop deze pagina laadde. */
+let landingCampaign = [];
+const CAMPAIGN_KEYS = [
+    "gclid",
+    "gbraid",
+    "wbraid",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "utm_id",
+];
+function campaignParams(href) {
+    try {
+        const params = new URL(href).searchParams;
+        return CAMPAIGN_KEYS.flatMap((k) => {
+            const v = params.get(k);
+            return v ? [[k, v]] : [];
+        });
+    }
+    catch {
+        return [];
+    }
+}
+/**
+ * De URL die de tag bij het opstarten moet zien. Klikt de bezoeker pas op de
+ * banner nadat hij binnen de SPA is doorgeklikt, dan staan gclid/utm van de
+ * landingspagina niet meer in de adresbalk. In advanced mode zag gtag.js ze
+ * nog (het draaide al op de landingspagina). Voor GA4 zetten we ze terug in
+ * de eerste page_view, anders telt GA4 het bezoek niet als advertentie- of
+ * campagneverkeer. `undefined` = de huidige URL is goed zoals hij is.
+ */
+function restoredLocation() {
+    if (landingCampaign.length === 0)
+        return undefined;
+    try {
+        const url = new URL(window.location.href);
+        if (CAMPAIGN_KEYS.some((k) => url.searchParams.has(k)))
+            return undefined;
+        for (const [k, v] of landingCampaign)
+            url.searchParams.set(k, v);
+        return url.toString();
+    }
+    catch {
+        return undefined;
+    }
+}
 function ensureDataLayer() {
     window.dataLayer = window.dataLayer ?? [];
     if (!window.gtag) {
@@ -48,6 +96,7 @@ export function initGtag({ measurementId, adsConversionId, debug }) {
     if (!measurementId && !adsConversionId)
         return;
     options = { measurementId, adsConversionId, debug };
+    landingCampaign = campaignParams(window.location.href);
 }
 /**
  * Past de keuze uit de cookiebanner toe. Wordt aangeroepen bij het eerste
@@ -83,8 +132,11 @@ export function applyConsent({ analytics, marketing }) {
         ad_personalization: current.marketing ? "granted" : "denied",
         analytics_storage: current.analytics ? "granted" : "denied",
     });
-    // Ingetrokken toestemming: de geladen tag stuurt daarna ook geen
-    // cookieloze hits meer (Googles officiële uitschakelvlag per tag-id).
+    // Ingetrokken toestemming: `ga-disable-<G-id>` is Googles gedocumenteerde
+    // uitschakelvlag voor GA4, zodat ook de automatische page_views van
+    // routewissels stoppen. Voor Google Ads is die vlag niet gedocumenteerd; daar
+    // doen de denied-signalen en de send_to-poort in events.ts het werk.
+    // Gemeten 29-09-2026: na intrekken 0 verzoeken naar Google.
     const flags = window;
     if (measurementId)
         flags[`ga-disable-${measurementId}`] = !current.analytics;
@@ -98,10 +150,23 @@ export function applyConsent({ analytics, marketing }) {
             // `config` stuurt zelf de page_view van de pagina waarop het akkoord
             // valt; routewissels daarna meet GA4 via de history-events.
             configured.add(measurementId);
+            const restored = restoredLocation();
+            // Let op: een sleutel `send_page_view: undefined` zet de automatische
+            // page_view óók uit (gemeten 29-09-2026), dus alleen meegeven als false.
             window.gtag("config", measurementId, {
                 anonymize_ip: true,
                 debug_mode: debug === true ? true : undefined,
+                ...(restored ? { send_page_view: false } : {}),
             });
+            if (restored) {
+                // Eén keer, als event: een page_location in `config` zou blijven
+                // plakken aan elke latere routewissel.
+                window.gtag("event", "page_view", {
+                    page_location: restored,
+                    page_title: document.title,
+                    send_to: measurementId,
+                });
+            }
         }
         else if (!previous.analytics) {
             // Opnieuw toegestaan nadat het eerder op deze pagina was ingetrokken.
@@ -114,6 +179,8 @@ export function applyConsent({ analytics, marketing }) {
     }
     if (adsConversionId && current.marketing && !configured.has(adsConversionId)) {
         configured.add(adsConversionId);
+        // Geen page_location-herstel hier: de conversielinker leest de gclid uit
+        // de echte adresbalk, niet uit page_location (gemeten 29-09-2026).
         window.gtag("config", adsConversionId);
     }
     if (!started) {
@@ -121,10 +188,14 @@ export function applyConsent({ analytics, marketing }) {
         loadScript(current.analytics ? measurementId : adsConversionId);
     }
 }
-/** Tag-id's waar een event nu heen mag, volgens de toestemming van de bezoeker. */
+/**
+ * Tag-id's waar een event nu heen mag, volgens de toestemming van de bezoeker.
+ * `null` = dit pakket beheert de Google-tag niet (geen `initAnalytics` met een
+ * GA4- of Ads-id); wie dan zelf `window.gtag` zet, beheert ook de toestemming.
+ */
 export function consentedTargets() {
     if (!options)
-        return [];
+        return null;
     const targets = [];
     if (current.analytics && options.measurementId)
         targets.push(options.measurementId);
@@ -132,11 +203,12 @@ export function consentedTargets() {
         targets.push(options.adsConversionId);
     return targets;
 }
-/** Alleen voor tests: terug naar een verse paginalading. */
+/** @internal Alleen voor tests: terug naar een verse paginalading. Niet via de pakketroot. */
 export function resetGtagForTests() {
     options = null;
     started = false;
     configured.clear();
     current = { analytics: false, marketing: false };
+    landingCampaign = [];
 }
 //# sourceMappingURL=init.js.map
