@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.0 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.1 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -51,6 +51,24 @@ export function App() {
   );
 }
 ```
+
+Cookie preferences link (v0.4.1). Withdrawing consent must be as easy as giving it
+(GDPR art. 7(3)), so every site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
+footer that reopens the preferences window:
+
+```tsx
+import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
+
+<button type="button" onClick={() => openCookieVoorkeuren()}>
+  {t("footer.cookiePreferences")}
+</button>
+```
+
+It returns `false` (and does nothing) when the banner is not running on the page: outside
+the browser, without GA4/Ads ids in `initAnalytics`, or in an automated browser. Use this
+function rather than the attribute `data-cc="show-preferencesModal"`: vanilla-cookieconsent
+binds that attribute once, during `run()`, to the elements that exist at that moment, so a
+React footer that renders later or remounts on a route change never gets it.
 
 ## How consent works (Consent Mode v2 basic, since v0.4.0)
 

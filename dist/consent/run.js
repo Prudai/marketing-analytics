@@ -1,4 +1,9 @@
 import * as CookieConsent from "vanilla-cookieconsent";
+/**
+ * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
+ * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
+ */
+let bannerGestart = false;
 export async function runConsent(options) {
     const includeMarketing = options.marketing === true;
     const applyCurrent = () => {
@@ -131,6 +136,38 @@ export async function runConsent(options) {
             },
         },
     });
+    bannerGestart = true;
+}
+/**
+ * Opent het voorkeurenvenster van de cookiebanner. Bedoeld voor een link als
+ * "Cookievoorkeuren" in de footer: intrekken moet even makkelijk zijn als
+ * toestemming geven (AVG art. 7 lid 3). Wie daar "Alleen noodzakelijk" kiest
+ * of alles uitzet, krijgt dezelfde intrekking als via de banner (`onChange`
+ * → `consent update` denied + `ga-disable-<id>`).
+ *
+ * Waarom een functie en niet het attribuut `data-cc="show-preferencesModal"`:
+ * vanilla-cookieconsent koppelt dat attribuut één keer, tijdens `run()`, aan
+ * de elementen die er dán al staan. Een React-footer die later rendert, of bij
+ * een routewissel opnieuw mount, krijgt die koppeling niet.
+ *
+ * @returns `true` als het venster openging; `false` als de banner op deze
+ * pagina niet draait (buiten de browser, geen tag-id's in `initAnalytics`, of
+ * een geautomatiseerde browser, die vanilla-cookieconsent overslaat).
+ */
+export function openCookieVoorkeuren() {
+    if (typeof window === "undefined" || !bannerGestart)
+        return false;
+    try {
+        CookieConsent.showPreferences();
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/** @internal Alleen voor tests: terug naar een pagina zonder banner. Niet via de pakketroot. */
+export function resetConsentForTests() {
+    bannerGestart = false;
 }
 export { CookieConsent };
 //# sourceMappingURL=run.js.map
