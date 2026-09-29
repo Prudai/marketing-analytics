@@ -118,11 +118,6 @@ export function initGtag({ measurementId, adsConversionId, debug }: GtagInitOpti
 }
 
 /**
- * Past de keuze uit de cookiebanner toe. Wordt aangeroepen bij het eerste
- * akkoord, bij elke paginalading met een opgeslagen akkoord, en bij elke
- * wijziging van de voorkeuren.
- */
-/**
  * Google Ads bewaart de advertentieklik niet alleen in het cookie `_gcl_aw`, maar
  * ook in localStorage (`_gcl_ls`). De cookiebanner ruimt alleen cookies op, dus na
  * intrekken bleef de klik in localStorage staan (gemeten op leo.prudai.com,
@@ -142,6 +137,11 @@ function wisAdsOpslag(): void {
   }
 }
 
+/**
+ * Past de keuze uit de cookiebanner toe. Wordt aangeroepen bij het eerste
+ * akkoord, bij elke paginalading met een opgeslagen akkoord, en bij elke
+ * wijziging van de voorkeuren.
+ */
 export function applyConsent({ analytics, marketing }: ConsentState): void {
   if (typeof window === "undefined" || !options) return;
   const { measurementId, adsConversionId, debug } = options;
@@ -152,14 +152,15 @@ export function applyConsent({ analytics, marketing }: ConsentState): void {
     marketing: marketing && Boolean(adsConversionId),
   };
 
-  // Alleen op een site mét Ads-tag: /vera en /zia draaien zonder Ads op dezelfde
-  // origin als prudai.com en mogen de klik van een bezoeker die daar wél
-  // toestemming gaf niet wissen.
-  if (adsConversionId && !current.marketing) wisAdsOpslag();
 
   if (!started) {
-    // Basic: zonder toestemming blijft de tag helemaal weg.
-    if (!current.analytics && !current.marketing) return;
+    // Basic: zonder toestemming blijft de tag helemaal weg. Een eerder bewaarde
+    // advertentieklik gaat dan ook weg (verse paginalading met opgeslagen
+    // weigering, of "Alleen noodzakelijk" als eerste keuze).
+    if (!current.analytics && !current.marketing) {
+      if (adsConversionId) wisAdsOpslag();
+      return;
+    }
     ensureDataLayer();
     window.gtag!("consent", "default", {
       ad_storage: "denied",
@@ -191,6 +192,10 @@ export function applyConsent({ analytics, marketing }: ConsentState): void {
   const flags = window as unknown as Record<string, boolean>;
   if (measurementId) flags[`ga-disable-${measurementId}`] = !current.analytics;
   if (adsConversionId) flags[`ga-disable-${adsConversionId}`] = !current.marketing;
+  // Pas na de denied-update en de uitschakelvlaggen. Alleen op een site mét
+  // Ads-tag: /vera en /zia draaien zonder Ads op dezelfde origin als prudai.com
+  // en mogen de klik niet wissen van een bezoeker die daar wél toestemming gaf.
+  if (adsConversionId && !current.marketing) wisAdsOpslag();
 
   if (!started) {
     window.gtag!("js", new Date());

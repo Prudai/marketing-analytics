@@ -377,15 +377,39 @@ describe("intrekken ruimt de advertentieklik in localStorage op (v0.4.4)", () =>
     expect(ls.keys()).toEqual(["_gcl_ls"]);
   });
 
+  test("verse paginalading met opgeslagen weigering (alleen noodzakelijk): klik weg, geen tag", () => {
+    const ls = fakeStorage({ _gcl_ls: "oude klik", ander: "blijft" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: false, marketing: false });
+    expect(ls.keys()).toEqual(["ander"]);
+    expect(googleScripts()).toHaveLength(0);
+  });
+
+  test("alleen analytics op de Ads-site: klik weg, GA4 wel", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual([]);
+    expect(configs("G-TEST")).toHaveLength(1);
+  });
+
   test("geblokkeerde localStorage: geen fout", () => {
+    let gelezen = 0;
     Object.defineProperty(g, "localStorage", {
       configurable: true,
       get() {
+        gelezen++;
         throw new Error("SecurityError");
       },
     });
-    initGtag(IDS);
-    expect(() => applyConsent({ analytics: false, marketing: false })).not.toThrow();
-    Object.defineProperty(g, "localStorage", { configurable: true, writable: true, value: undefined });
+    try {
+      initGtag(IDS);
+      expect(() => applyConsent({ analytics: false, marketing: false })).not.toThrow();
+      expect(gelezen).toBeGreaterThan(0); // het wispad is echt geraakt
+    } finally {
+      Object.defineProperty(g, "localStorage", { configurable: true, writable: true, value: undefined });
+    }
   });
 });

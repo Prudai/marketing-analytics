@@ -1,11 +1,23 @@
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentState } from "../ga4/init";
 /**
- * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
- * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
+ * Toestemmingsrevisie, gelijk op alle sites. Een opgeslagen keuze met een andere
+ * revisie telt niet meer en de banner vraagt opnieuw. 3 sinds v0.4.4: de keuze
+ * geldt sindsdien voor alle Prudai-websites samen (zie `GEDEELD_DOMEIN`), een
+ * ruimere reikwijdte dan "deze site", dus iedereen wordt één keer opnieuw gevraagd.
  */
-/** Toestemmingsrevisie, gelijk op alle sites (zie `revision` in runConsent). */
-export declare const CONSENT_REVISIE = 2;
+export declare const CONSENT_REVISIE = 3;
+/**
+ * Eén toestemming voor alle Prudai-websites (besluit Beau 29-09-2026). De keuze
+ * staat in `cc_cookie` op `.prudai.com`, zodat akkoord of intrekken op één site
+ * direct op alle `*.prudai.com`-sites geldt. Daarvóór schreef elke host zijn eigen
+ * cookie, maar die van prudai.com (`Domain=prudai.com`) was ook op de subdomeinen
+ * zichtbaar en won daar: intrekken op leo.prudai.com hield na herladen geen stand
+ * (gemeten op productie 29-09-2026).
+ */
+export declare const GEDEELD_DOMEIN = "prudai.com";
+/** Domein voor `cc_cookie`: `prudai.com` op de Prudai-sites, anders de standaard. */
+export declare function toestemmingsDomein(host: string): string | undefined;
 /**
  * Domeinen waarop een cookie gewist moet worden: de host en elk bovenliggend
  * domein (leo.prudai.com → leo.prudai.com, prudai.com). gtag zet `_ga`/`_gcl_*`
@@ -20,7 +32,12 @@ export declare const CONSENT_REVISIE = 2;
 export declare function wisDomeinen(host: string): string[];
 export interface RunConsentOptions {
     policyHref?: string;
-    /** Show a Marketing category (Google Ads conversion measurement). */
+    /**
+     * @deprecated Sinds v0.4.4 toont elke site de categorie Marketing: de keuze is
+     * gedeeld over alle Prudai-sites, en een site zonder die categorie zou haar bij
+     * opslaan uit de gedeelde keuze wissen. Of er echt een Ads-tag laadt, bepaalt
+     * `googleAds` in `initAnalytics`. Deze optie wordt genegeerd.
+     */
     marketing?: boolean;
     onConsentChange: (state: ConsentState) => void;
 }

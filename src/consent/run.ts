@@ -3,12 +3,48 @@ import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentState } from "../ga4/init";
 
 /**
+ * Toestemmingsrevisie, gelijk op alle sites. Een opgeslagen keuze met een andere
+ * revisie telt niet meer en de banner vraagt opnieuw. 3 sinds v0.4.4: de keuze
+ * geldt sindsdien voor alle Prudai-websites samen (zie `GEDEELD_DOMEIN`), een
+ * ruimere reikwijdte dan "deze site", dus iedereen wordt één keer opnieuw gevraagd.
+ */
+export const CONSENT_REVISIE = 3;
+
+/**
+ * Eén toestemming voor alle Prudai-websites (besluit Beau 29-09-2026). De keuze
+ * staat in `cc_cookie` op `.prudai.com`, zodat akkoord of intrekken op één site
+ * direct op alle `*.prudai.com`-sites geldt. Daarvóór schreef elke host zijn eigen
+ * cookie, maar die van prudai.com (`Domain=prudai.com`) was ook op de subdomeinen
+ * zichtbaar en won daar: intrekken op leo.prudai.com hield na herladen geen stand
+ * (gemeten op productie 29-09-2026).
+ */
+export const GEDEELD_DOMEIN = "prudai.com";
+
+/** Domein voor `cc_cookie`: `prudai.com` op de Prudai-sites, anders de standaard. */
+export function toestemmingsDomein(host: string): string | undefined {
+  const h = host.toLowerCase().replace(/\.$/, "");
+  return h === GEDEELD_DOMEIN || h.endsWith(`.${GEDEELD_DOMEIN}`) ? GEDEELD_DOMEIN : undefined;
+}
+
+/**
+ * Oude toestemming per subdomein opruimen. Tot v0.4.4 schreef bijvoorbeeld
+ * leo.prudai.com een eigen `cc_cookie` (host-only of `Domain=leo.prudai.com`). Die
+ * zou naast de gedeelde cookie blijven staan, en de bibliotheek leest de eerste
+ * `cc_cookie` die ze vindt; de oudste kan dus winnen. Op prudai.com zelf is de
+ * bestaande cookie al de gedeelde, die blijft staan.
+ */
+function ruimOudeToestemmingOp(host: string): void {
+  if (typeof document === "undefined") return;
+  if (toestemmingsDomein(host) !== GEDEELD_DOMEIN || host === GEDEELD_DOMEIN) return;
+  const weg = "cc_cookie=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT";
+  document.cookie = weg;
+  document.cookie = `${weg}; domain=${host}`;
+}
+
+/**
  * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
  * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
  */
-/** Toestemmingsrevisie, gelijk op alle sites (zie `revision` in runConsent). */
-export const CONSENT_REVISIE = 2;
-
 let bannerGestart = false;
 /**
  * Gooide `showPreferences()` al eens? Dan heeft de bibliotheek geen venster (bij
@@ -42,13 +78,21 @@ function wisbareCookies(naam: RegExp): { name: RegExp; domain?: string }[] {
 
 export interface RunConsentOptions {
   policyHref?: string;
-  /** Show a Marketing category (Google Ads conversion measurement). */
+  /**
+   * @deprecated Sinds v0.4.4 toont elke site de categorie Marketing: de keuze is
+   * gedeeld over alle Prudai-sites, en een site zonder die categorie zou haar bij
+   * opslaan uit de gedeelde keuze wissen. Of er echt een Ads-tag laadt, bepaalt
+   * `googleAds` in `initAnalytics`. Deze optie wordt genegeerd.
+   */
   marketing?: boolean;
   onConsentChange: (state: ConsentState) => void;
 }
 
 export async function runConsent(options: RunConsentOptions): Promise<void> {
-  const includeMarketing = options.marketing === true;
+  const includeMarketing = true;
+  const host = typeof location === "undefined" ? "" : location.hostname;
+  ruimOudeToestemmingOp(host);
+  const domein = toestemmingsDomein(host);
 
   const applyCurrent = () => {
     options.onConsentChange({
@@ -128,14 +172,12 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
   ];
 
   await CookieConsent.run({
-    // Stored consent is only re-requested on a revision mismatch. Bump this
-    // number whenever a consent-relevant category is added or changed. It is
-    // the same on every site (v0.4.4): prudai.com (with marketing) and
-    // /vera, /zia (without) share one cc_cookie on the same origin, and with
-    // different numbers (2 vs 0) a visitor switching between them got the
-    // banner again on every switch (29-09-2026). A site without the marketing
-    // category simply ignores that stored category.
+    // Stored consent is only re-requested on a revision mismatch. Bump
+    // CONSENT_REVISIE whenever a consent-relevant category or the scope changes.
+    // Every site has the same categories and revision, because the choice is
+    // shared across all Prudai sites (GEDEELD_DOMEIN).
     revision: CONSENT_REVISIE,
+    ...(domein ? { cookie: { domain: domein } } : {}),
     guiOptions: {
       consentModal: { layout: "box inline", position: "bottom right" },
       preferencesModal: { layout: "box", position: "right" },
@@ -149,9 +191,9 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
       translations: {
         nl: {
           consentModal: {
-            title: "Cookies op deze site",
+            title: "Cookies op de websites van Prudai",
             description:
-              "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze site gebruiken, zodat we 'm kunnen verbeteren. Essentiële functies werken altijd zonder cookies.",
+              "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken, zodat we ze kunnen verbeteren. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com) en je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
             acceptAllBtn: "Alles accepteren",
             acceptNecessaryBtn: "Alleen noodzakelijk",
             showPreferencesBtn: "Voorkeuren",
@@ -170,9 +212,9 @@ export async function runConsent(options: RunConsentOptions): Promise<void> {
         },
         en: {
           consentModal: {
-            title: "Cookies on this site",
+            title: "Cookies on Prudai websites",
             description:
-              "We use analytics cookies to understand how visitors use our site so we can improve it. Essential features always work without cookies.",
+              "We use analytics cookies to understand how visitors use our websites so we can improve them. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com) and you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
             acceptAllBtn: "Accept all",
             acceptNecessaryBtn: "Only necessary",
             showPreferencesBtn: "Preferences",
