@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex`, `product-page-vera`, `product
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.3.1 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.0 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -52,13 +52,30 @@ export function App() {
 }
 ```
 
-## How consent works
+## How consent works (Consent Mode v2 basic, since v0.4.0)
 
-- Google Consent Mode v2 is set to **all denied** before `gtag.js` loads.
+- **Nothing Google loads before consent.** No `gtag.js`, no `dataLayer`, no `window.gtag`,
+  so no cookieless pings either. `initAnalytics` only remembers the tag ids.
 - vanilla-cookieconsent shows an AVG-compliant banner (NL/EN, auto-detects).
-- When the user accepts the "analytics" category, we call `gtag('consent', 'update', { analytics_storage: 'granted', ... })` and emit a `page_view` event so GA4 Realtime populates.
-- With `googleAds` configured, a "Marketing" category is added to the banner; accepting it grants `ad_storage`/`ad_user_data`/`ad_personalization`. Without acceptance, Google Ads still receives cookieless conversion pings (Consent Mode modeling). Enabling the category also bumps the consent `revision`, so returning visitors are asked again once.
-- Without `googleAds`, ad categories stay denied and no Marketing category is shown.
+- On consent (the first click, or on every page load for a returning visitor with stored
+  consent) the tag starts: `consent default` all denied, immediately followed by
+  `consent update` with the visitor's choice, then `config` and the `gtag.js` script.
+  GA4's `config` sends the `page_view` of the page the consent lands on; later SPA route
+  changes are measured by GA4's history-change page views.
+- The "analytics" category configures GA4. With `googleAds` configured the banner has a
+  "Marketing" category; only that one configures the Google Ads tag and grants
+  `ad_storage`/`ad_user_data`/`ad_personalization`. Enabling the category bumps the consent
+  `revision`, so returning visitors are asked again once.
+- `trackEvent` and the other helpers send only to the tags the visitor consented to
+  (`send_to`); without consent they do nothing, and nothing is queued for later. So
+  `ads_conversion_*` reaches Google Ads only with marketing consent.
+- Withdrawing consent sends `consent update` denied and sets Google's
+  `ga-disable-<id>` flag for the withdrawn tag, so a tag that is already loaded stops
+  sending hits. The script itself stays on the page until the next load.
+- Why basic and not advanced: in advanced mode the tag sent cookieless pings before any
+  click. Most of those came from Microsoft 365 link scanners opening the links in our
+  mails (29-09-2026: 775 of 1,283 GA4 sessions in 28 days, all "Unassigned"). The
+  modelling advanced mode exists for needs a volume we do not reach.
 
 ## Development
 

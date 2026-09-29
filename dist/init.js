@@ -19,6 +19,9 @@ export function initAnalytics(config) {
     const measurementId = config.ga4?.measurementId;
     const adsConversionId = config.googleAds?.conversionId;
     if (measurementId || adsConversionId) {
+        // Consent Mode basic: initGtag onthoudt alleen de id's. gtag.js laadt pas
+        // in applyConsent, na akkoord in de banner (of direct bij een opgeslagen
+        // akkoord van een terugkerende bezoeker).
         initGtag({
             measurementId,
             adsConversionId,
