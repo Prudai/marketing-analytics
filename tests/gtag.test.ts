@@ -50,6 +50,14 @@ function freshPage(): void {
   }
   delete g.dataLayer;
   delete g.gtag;
+  g.location = { href: "https://example.test/contact" };
+}
+
+/** Een gtag die niet van dit pakket is (site-snippet of test-spion). */
+function foreignGtag(): unknown[][] {
+  const calls: unknown[][] = [];
+  g.gtag = (...args: unknown[]) => void calls.push(args);
+  return calls;
 }
 
 const IDS = { measurementId: "G-TEST", adsConversionId: "AW-TEST" };
@@ -79,6 +87,22 @@ describe("Consent Mode basic — vóór akkoord", () => {
     expect(g.gtag).toBeUndefined();
     expect(dataLayer()).toHaveLength(0);
   });
+
+  test("zonder akkoord ook niet via een gtag die al op de pagina stond", () => {
+    initGtag(IDS);
+    const calls = foreignGtag();
+    trackEvent("ads_conversion_Aanmelding_1");
+    trackEvent("cta_click", { send_to: "G-TEST" });
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("pakket beheert de tag niet (geen initAnalytics met tag-id)", () => {
+  test("event gaat ongewijzigd naar de gtag van de site, zoals vóór v0.4.0", () => {
+    const calls = foreignGtag();
+    trackEvent("cta_click", { label: "probeer-gratis", location: "hero" });
+    expect(calls).toEqual([["event", "cta_click", { label: "probeer-gratis", location: "hero" }]]);
+  });
 });
 
 describe("Consent Mode basic — na akkoord", () => {
@@ -107,6 +131,7 @@ describe("Consent Mode basic — na akkoord", () => {
     expect(update.ad_personalization).toBe("granted");
 
     expect(configs("G-TEST")).toHaveLength(1);
+    expect("send_page_view" in (configs("G-TEST")[0][2] as object)).toBe(false);
     expect(configs("AW-TEST")).toHaveLength(1);
     expect(googleScripts()).toHaveLength(1);
     expect(googleScripts()[0].src).toContain("id=G-TEST");
@@ -153,6 +178,25 @@ describe("Consent Mode basic — na akkoord", () => {
     expect(googleScripts()[0].src).toContain("id=AW-TEST");
   });
 
+  test("voorkeuren wijzigen terwijl analytics aan blijft: geen extra page_view", () => {
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: false });
+    applyConsent({ analytics: true, marketing: true });
+    applyConsent({ analytics: true, marketing: false });
+    applyConsent({ analytics: true, marketing: true });
+    expect(events("page_view")).toHaveLength(0);
+    expect(configs("G-TEST")).toHaveLength(1);
+  });
+
+  test("expliciete send_to naar een toegestane tag gaat ongewijzigd door", () => {
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: true });
+    trackEvent("conversion", { send_to: "AW-TEST/abcLabel", value: 1 });
+    expect(events("conversion")).toEqual([
+      ["event", "conversion", { send_to: "AW-TEST/abcLabel", value: 1 }],
+    ]);
+  });
+
   test("marketing later erbij: Ads-config één keer, geen tweede script", () => {
     initGtag(IDS);
     applyConsent({ analytics: true, marketing: false });
@@ -182,6 +226,52 @@ describe("Consent Mode basic — na akkoord", () => {
     applyConsent({ analytics: false, marketing: true });
     expect(googleScripts()).toHaveLength(0);
     expect(g.gtag).toBeUndefined();
+  });
+});
+
+describe("akkoord na doorklikken binnen de SPA", () => {
+  const LANDING = "https://example.test/?gclid=abc123&utm_source=google&utm_medium=cpc&x=1";
+
+  test("GA4 krijgt gclid/utm van de landingspagina terug in de eerste page_view", () => {
+    g.location = { href: LANDING };
+    initGtag(IDS);
+    g.location = { href: "https://example.test/contact?y=2" };
+    applyConsent({ analytics: true, marketing: true });
+
+    const cfg = configs("G-TEST")[0][2] as Record<string, unknown>;
+    expect(cfg.send_page_view).toBe(false);
+    const pv = events("page_view");
+    expect(pv).toHaveLength(1);
+    const params = pv[0][2] as Record<string, string>;
+    expect(params.send_to).toBe("G-TEST");
+    const loc = new URL(params.page_location);
+    expect(loc.pathname).toBe("/contact");
+    expect(loc.searchParams.get("y")).toBe("2");
+    expect(loc.searchParams.get("gclid")).toBe("abc123");
+    expect(loc.searchParams.get("utm_source")).toBe("google");
+    expect(loc.searchParams.get("utm_medium")).toBe("cpc");
+    expect(loc.searchParams.has("x")).toBe(false);
+    // Ads-config blijft kaal: page_location zet de gclid-cookie niet.
+    expect(configs("AW-TEST")[0][2]).toBeUndefined();
+  });
+
+  test("akkoord op de landingspagina zelf: gewone config, geen handmatige page_view", () => {
+    g.location = { href: LANDING };
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: false });
+    // Geen sleutel send_page_view, ook niet met undefined: gtag leest dat als "uit".
+    expect("send_page_view" in (configs("G-TEST")[0][2] as object)).toBe(false);
+    expect(events("page_view")).toHaveLength(0);
+  });
+
+  test("landing zonder campagne: niets toegevoegd", () => {
+    g.location = { href: "https://example.test/?x=1" };
+    initGtag(IDS);
+    g.location = { href: "https://example.test/contact" };
+    applyConsent({ analytics: true, marketing: false });
+    // Geen sleutel send_page_view, ook niet met undefined: gtag leest dat als "uit".
+    expect("send_page_view" in (configs("G-TEST")[0][2] as object)).toBe(false);
+    expect(events("page_view")).toHaveLength(0);
   });
 });
 
