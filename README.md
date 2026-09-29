@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.0 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.2 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -52,6 +52,26 @@ export function App() {
 }
 ```
 
+Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as giving it
+(GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
+footer that reopens the preferences window. prudai-website and product-page-alex have one;
+the other consumers listed above do not yet.
+
+```tsx
+import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
+
+<button type="button" onClick={() => openCookieVoorkeuren()}>
+  {t("footer.cookiePreferences")}
+</button>
+```
+
+It returns `false` (and does nothing) when the banner is not running on the page: outside
+the browser, without GA4/Ads ids in `initAnalytics`, or for a crawler user agent (the library
+then has no window; from v0.4.2 every later call returns `false` too). Use this
+function rather than the attribute `data-cc="show-preferencesModal"`: vanilla-cookieconsent
+binds that attribute once, during `run()`, to the elements that exist at that moment, so a
+React footer that renders later or remounts on a route change never gets it.
+
 ## How consent works (Consent Mode v2 basic, since v0.4.0)
 
 - **Nothing Google loads before consent.** No `gtag.js`, no `dataLayer`, no `window.gtag`,
@@ -72,8 +92,13 @@ export function App() {
 - Withdrawing consent sends `consent update` denied and sets `ga-disable-<id>` for the
   withdrawn tag. For GA4 that is Google's documented opt-out, so the automatic page views
   of later route changes stop too; for Google Ads the flag is not documented and the
-  `send_to` gating plus the denied ad signals do the work. Measured 29-09-2026: 0 requests
-  to Google after withdrawal. The script itself stays on the page until the next load.
+  `send_to` gating plus the denied ad signals do the work. Measured 29-09-2026: route
+  changes, scrolling and reloads after withdrawal send 0 requests to Google. One exception:
+  events recorded before the withdrawal that gtag has not sent yet (GA4 batches them for a
+  few seconds) still go out once, a few seconds after the withdrawal, with the consent state
+  they were recorded under (`gcs=G111`). gtag has no public way to drop that queue, and the
+  processing before the withdrawal stays lawful (GDPR art. 7(3)). The script itself stays on
+  the page until the next load.
 - Consent after navigating inside the SPA: the gclid/utm of the landing URL are no longer
   in the address bar when the tag starts. The package remembers them from page load and
   puts them back into GA4's first `page_view` (`page_location`), so GA4 still counts the
