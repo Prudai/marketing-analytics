@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.2 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.3 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -77,6 +77,12 @@ React footer that renders later or remounts on a route change never gets it.
 - **Nothing Google loads before consent.** No `gtag.js`, no `dataLayer`, no `window.gtag`,
   so no cookieless pings either. `initAnalytics` only remembers the tag ids.
 - vanilla-cookieconsent shows an AVG-compliant banner (NL/EN, auto-detects).
+- **Withdrawal clears the cookies on the parent domain too (v0.4.3).** gtag writes `_ga*` and
+  `_gcl_*` on the registrable domain (`.prudai.com`), also when the visitor is on a subdomain such
+  as leo.prudai.com. Without an explicit `domain` the library only erased on `location.hostname`,
+  so on subdomains the cookies survived a withdrawal (measured in production 29-09-2026). The
+  service cookie lists now carry the host plus every parent domain. A `*.vercel.app` preview does
+  not show this problem (gtag sets the cookies on the host there), so verify it on a real subdomain.
 - On consent (the first click, or on every page load for a returning visitor with stored
   consent) the tag starts: `consent default` all denied, immediately followed by
   `consent update` with the visitor's choice, then `config` and the `gtag.js` script.
