@@ -3,6 +3,8 @@ import * as CookieConsent from "vanilla-cookieconsent";
  * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
  * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
  */
+/** Toestemmingsrevisie, gelijk op alle sites (zie `revision` in runConsent). */
+export const CONSENT_REVISIE = 2;
 let bannerGestart = false;
 /**
  * Gooide `showPreferences()` al eens? Dan heeft de bibliotheek geen venster (bij
@@ -105,12 +107,14 @@ export async function runConsent(options) {
             : []),
     ];
     await CookieConsent.run({
-        // Stored consent is only re-requested on a revision mismatch. Sites that
-        // enable the marketing category must re-ask returning visitors (their
-        // cc_cookie predates the category and would deny ads consent for up to
-        // 182 days). Bump this number whenever a consent-relevant category is
-        // added or changed.
-        revision: includeMarketing ? 2 : 0,
+        // Stored consent is only re-requested on a revision mismatch. Bump this
+        // number whenever a consent-relevant category is added or changed. It is
+        // the same on every site (v0.4.4): prudai.com (with marketing) and
+        // /vera, /zia (without) share one cc_cookie on the same origin, and with
+        // different numbers (2 vs 0) a visitor switching between them got the
+        // banner again on every switch (29-09-2026). A site without the marketing
+        // category simply ignores that stored category.
+        revision: CONSENT_REVISIE,
         guiOptions: {
             consentModal: { layout: "box inline", position: "bottom right" },
             preferencesModal: { layout: "box", position: "right" },

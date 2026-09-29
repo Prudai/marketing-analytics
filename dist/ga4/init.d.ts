@@ -33,11 +33,6 @@ export interface ConsentState {
  * `applyConsent` zodra er toestemming is (Consent Mode basic).
  */
 export declare function initGtag({ measurementId, adsConversionId, debug }: GtagInitOptions): void;
-/**
- * Past de keuze uit de cookiebanner toe. Wordt aangeroepen bij het eerste
- * akkoord, bij elke paginalading met een opgeslagen akkoord, en bij elke
- * wijziging van de voorkeuren.
- */
 export declare function applyConsent({ analytics, marketing }: ConsentState): void;
 /**
  * Tag-id's waar een event nu heen mag, volgens de toestemming van de bezoeker.

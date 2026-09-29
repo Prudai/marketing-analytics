@@ -103,6 +103,28 @@ export function initGtag({ measurementId, adsConversionId, debug }) {
  * akkoord, bij elke paginalading met een opgeslagen akkoord, en bij elke
  * wijziging van de voorkeuren.
  */
+/**
+ * Google Ads bewaart de advertentieklik niet alleen in het cookie `_gcl_aw`, maar
+ * ook in localStorage (`_gcl_ls`). De cookiebanner ruimt alleen cookies op, dus na
+ * intrekken bleef de klik in localStorage staan (gemeten op leo.prudai.com,
+ * 29-09-2026). localStorage is per origin, dus dit raakt geen andere host.
+ */
+function wisAdsOpslag() {
+    try {
+        const ls = window.localStorage;
+        const sleutels = [];
+        for (let i = 0; i < ls.length; i++) {
+            const k = ls.key(i);
+            if (k && /^_gcl/.test(k))
+                sleutels.push(k);
+        }
+        for (const k of sleutels)
+            ls.removeItem(k);
+    }
+    catch {
+        // localStorage geblokkeerd of afwezig: dan is er ook niets bewaard.
+    }
+}
 export function applyConsent({ analytics, marketing }) {
     if (typeof window === "undefined" || !options)
         return;
@@ -112,6 +134,11 @@ export function applyConsent({ analytics, marketing }) {
         analytics: analytics && Boolean(measurementId),
         marketing: marketing && Boolean(adsConversionId),
     };
+    // Alleen op een site mét Ads-tag: /vera en /zia draaien zonder Ads op dezelfde
+    // origin als prudai.com en mogen de klik van een bezoeker die daar wél
+    // toestemming gaf niet wissen.
+    if (adsConversionId && !current.marketing)
+        wisAdsOpslag();
     if (!started) {
         // Basic: zonder toestemming blijft de tag helemaal weg.
         if (!current.analytics && !current.marketing)

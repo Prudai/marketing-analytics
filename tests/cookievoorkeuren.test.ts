@@ -8,6 +8,7 @@ import { afterAll, beforeEach, describe, expect, mock, test } from "bun:test";
 const aanroepen: string[] = [];
 type WisCookie = { name: RegExp; domain?: string };
 let laatsteConfig: {
+  revision?: number;
   categories: Record<string, { services?: Record<string, { cookies?: WisCookie[] }> }>;
 } | null = null;
 let showPreferencesGooit = false;
@@ -124,5 +125,17 @@ describe("cookies wissen bij intrekken", () => {
       expect(lijst.every((c) => String(c.name) === naam)).toBe(true);
       expect(lijst.map((c) => c.domain)).toEqual([undefined, "leo.prudai.com", "prudai.com"]);
     }
+  });
+});
+
+describe("toestemmingsrevisie (v0.4.4)", () => {
+  test("gelijk op sites met en zonder marketing (gedeelde cc_cookie op prudai.com)", async () => {
+    await runConsent({ marketing: true, onConsentChange: () => {} });
+    const met = laatsteConfig!.revision;
+    resetConsentForTests();
+    await runConsent({ onConsentChange: () => {} });
+    const zonder = laatsteConfig!.revision;
+    expect(met).toBe(2);
+    expect(zonder).toBe(2);
   });
 });

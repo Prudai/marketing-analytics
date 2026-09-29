@@ -331,3 +331,61 @@ afterAll(() => {
   delete g.document;
   delete g.location;
 });
+
+describe("intrekken ruimt de advertentieklik in localStorage op (v0.4.4)", () => {
+  // Stub met de Storage-API die het pakket gebruikt (length/key/removeItem).
+  function fakeStorage(init: Record<string, string>) {
+    const data = new Map(Object.entries(init));
+    return {
+      get length() {
+        return data.size;
+      },
+      key: (i: number) => [...data.keys()][i] ?? null,
+      removeItem: (k: string) => void data.delete(k),
+      keys: () => [...data.keys()].sort(),
+    };
+  }
+  const vorige = g.localStorage;
+  afterAll(() => {
+    if (vorige === undefined) delete g.localStorage;
+    else g.localStorage = vorige;
+  });
+
+  test("site mét Ads: marketing ingetrokken → _gcl-sleutels weg, rest blijft", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik", _gcl_dc: "x", cc_cookie: "keuze", ander: "blijft" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: true, marketing: true });
+    expect(ls.keys()).toContain("_gcl_ls");
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual(["ander", "cc_cookie"]);
+  });
+
+  test("site zonder Ads-tag (zoals /vera op prudai.com): laat de klik van de hoofdsite staan", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik van prudai.com" });
+    g.localStorage = ls;
+    initGtag({ measurementId: "G-TEST" });
+    applyConsent({ analytics: true, marketing: false });
+    expect(ls.keys()).toEqual(["_gcl_ls"]);
+  });
+
+  test("marketing toegestaan: klik blijft staan", () => {
+    const ls = fakeStorage({ _gcl_ls: "klik" });
+    g.localStorage = ls;
+    initGtag(IDS);
+    applyConsent({ analytics: false, marketing: true });
+    expect(ls.keys()).toEqual(["_gcl_ls"]);
+  });
+
+  test("geblokkeerde localStorage: geen fout", () => {
+    Object.defineProperty(g, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("SecurityError");
+      },
+    });
+    initGtag(IDS);
+    expect(() => applyConsent({ analytics: false, marketing: false })).not.toThrow();
+    Object.defineProperty(g, "localStorage", { configurable: true, writable: true, value: undefined });
+  });
+});

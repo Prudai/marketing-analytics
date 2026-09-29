@@ -1,6 +1,12 @@
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentState } from "../ga4/init";
 /**
+ * Is de banner op deze pagina gestart? Pas na `CookieConsent.run()` kan het
+ * voorkeurenvenster open; daarvóór gooit `showPreferences()` een TypeError.
+ */
+/** Toestemmingsrevisie, gelijk op alle sites (zie `revision` in runConsent). */
+export declare const CONSENT_REVISIE = 2;
+/**
  * Domeinen waarop een cookie gewist moet worden: de host en elk bovenliggend
  * domein (leo.prudai.com → leo.prudai.com, prudai.com). gtag zet `_ga`/`_gcl_*`
  * op het registreerbare domein (`.prudai.com`), ook als de bezoeker op een

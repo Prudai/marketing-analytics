@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.3 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.4 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -54,8 +54,10 @@ export function App() {
 
 Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as giving it
 (GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
-footer that reopens the preferences window. prudai-website and product-page-alex have one;
-the other consumers listed above do not yet.
+footer that reopens the preferences window. prudai-website, product-page-alex (leo),
+product-page-vera, product-page-zia, legal-center and trust-center have one (v0.4.4 rollout,
+29-09-2026). irma, bever, ordo and research-site run no banner (no GA4 id configured); give
+them the link as soon as they get one.
 
 ```tsx
 import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
@@ -89,6 +91,15 @@ React footer that renders later or remounts on a route change never gets it.
   host. Withdrawing on one site therefore also clears those shared cookies for the other sites
   (the apex prudai.com already did this before v0.4.3); a site where consent still stands simply
   starts a new GA client id on the next visit.
+- **Withdrawing marketing also clears the ad click from localStorage (v0.4.4).** Google Ads keeps
+  the click in `_gcl_ls` (localStorage) next to the `_gcl_aw` cookie; the banner only clears
+  cookies. On a site with an Ads tag, every `applyConsent` without marketing consent removes the
+  `_gcl*` localStorage keys. A site without an Ads tag (/vera, /zia on the prudai.com origin)
+  leaves them alone, so it cannot wipe the click of a visitor who consented on prudai.com.
+- **One consent revision everywhere (v0.4.4).** `revision` is `CONSENT_REVISIE` (2) on every site.
+  prudai.com and /vera, /zia share one `cc_cookie` on the same origin; with different revisions
+  (2 vs 0) the banner reappeared on every switch between them. Sites that were on revision 0 ask
+  their returning visitors once more.
 - On consent (the first click, or on every page load for a returning visitor with stored
   consent) the tag starts: `consent default` all denied, immediately followed by
   `consent update` with the visitor's choice, then `config` and the `gtag.js` script.
