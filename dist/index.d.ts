@@ -5,6 +5,7 @@ export type { EventParams } from "./ga4/events";
 export { SpeedInsights } from "./speed";
 export { Sentry } from "./sentry/init";
 export { CookieConsent, openCookieVoorkeuren } from "./consent/run";
+export type { BannerBereik } from "./consent/run";
 export { legHerkomstVast, leesHerkomst, HERKOMST_SLEUTEL } from "./herkomst";
 export type { Herkomst } from "./herkomst";
 //# sourceMappingURL=index.d.ts.map

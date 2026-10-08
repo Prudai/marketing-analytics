@@ -34,6 +34,7 @@ export function initAnalytics(config: InitAnalyticsConfig): void {
 
     void runConsent({
       policyHref: config.consent?.policyHref,
+      bereik: config.consent?.bereik,
       onConsentChange: applyConsent,
     });
   }

@@ -30,8 +30,17 @@ export declare function toestemmingsDomein(host: string): string | undefined;
  * geen bovenliggend domein.
  */
 export declare function wisDomeinen(host: string): string[];
+/**
+ * Waar de cookiekeuze voor geldt, zoals de banner het zegt (v0.4.5).
+ * - `prudai` (standaard): de gedeelde keuze op .prudai.com, "alle websites van Prudai".
+ * - `site`: een eigen domein buiten prudai.com (bv. ai-geletterdheid-training.nl), waar de keuze
+ *   alleen voor die website geldt. Verandert alleen de tekst; het cookie volgt altijd de host.
+ */
+export type BannerBereik = "prudai" | "site";
 export interface RunConsentOptions {
     policyHref?: string;
+    /** Standaard `prudai`; zie {@link BannerBereik}. */
+    bereik?: BannerBereik;
     /**
      * @deprecated Sinds v0.4.4 toont elke site de categorie Marketing: de keuze is
      * gedeeld over alle Prudai-sites, en een site zonder die categorie zou haar bij

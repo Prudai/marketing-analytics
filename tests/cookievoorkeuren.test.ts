@@ -200,3 +200,22 @@ describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
     expect(laatsteConfig!.revision).toBe(3);
   });
 });
+
+describe("bannerbereik (v0.4.5)", () => {
+  const tekst = () => JSON.stringify((laatsteConfig as unknown as { language: unknown }).language);
+  test("standaard ongewijzigd: de gedeelde keuze voor alle Prudai-websites", async () => {
+    await runConsent({ policyHref: "https://legal.prudai.com/privacy", onConsentChange: () => {} });
+    expect(tekst()).toContain("Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com); je kunt hem altijd wijzigen");
+    expect(tekst()).toContain("Cookies op de websites van Prudai");
+    expect(tekst()).toContain("Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com); you can change it");
+  });
+  test("bereik site: alleen deze website, geen prudai.com-claim", async () => {
+    resetConsentForTests();
+    await runConsent({ bereik: "site", onConsentChange: () => {} });
+    expect(tekst()).toContain("Je keuze geldt voor deze website; je kunt hem altijd wijzigen");
+    expect(tekst()).toContain("Cookies op deze website");
+    expect(tekst()).toContain("Your choice applies to this website; you can change it");
+    expect(tekst()).not.toContain("prudai.com");
+    expect(tekst()).not.toContain("alle websites");
+  });
+});
