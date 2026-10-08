@@ -2,7 +2,7 @@
 
 Shared analytics, consent (via [vanilla-cookieconsent v3](https://cookieconsent.orestbida.com)), and error-tracking (GlitchTip) for Prudai marketing sites.
 
-Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-page-vera`, `product-page-zia`, `product-page-irma`, `product-page-bever`, `product-page-ordo`, `legal-center`, `trust-center` and `research-site`. Each pins a git tag, so a new version reaches a site only when that site bumps its pin.
+Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-page-vera`, `product-page-zia`, `product-page-irma`, `product-page-bever`, `product-page-ordo`, `legal-center`, `trust-center`, `docs` (Astro, docs.prudai.com) and `research-site`. Each pins a git tag, so a new version reaches a site only when that site bumps its pin.
 
 ## Install
 
@@ -56,8 +56,11 @@ Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as g
 (GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
 footer that reopens the preferences window. prudai-website, product-page-alex (leo),
 product-page-vera, product-page-zia, legal-center and trust-center have one (v0.4.4 rollout,
-29-09-2026). irma, bever, ordo, maia and research-site run no banner (no GA4 id configured);
-give them the link, and at least v0.4.4, as soon as they get one.
+29-09-2026). product-page-irma, -bever and -ordo (served on prudai.com/<product>, measuring in
+the prudai.com stream) and docs.prudai.com (public pages only, never the SSO-gated ones) get the
+banner, v0.4.4 and the link in the 08-10-2026 rollout (card f926a352; live once those PRs are
+merged). maia and research-site run no banner (no GA4 id configured); give them the link, and
+at least v0.4.4, as soon as they get one.
 
 ```tsx
 import { openCookieVoorkeuren } from "@prudai/marketing-analytics";
