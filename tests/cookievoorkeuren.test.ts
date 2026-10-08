@@ -200,3 +200,73 @@ describe("één toestemming voor alle Prudai-sites (v0.4.4)", () => {
     expect(laatsteConfig!.revision).toBe(3);
   });
 });
+
+// De v0.4.4-tekst letterlijk: de standaard moet hier byte voor byte aan gelijk blijven, zodat de
+// sites op .prudai.com niets merken van de optie `bereik` (v0.4.5).
+const V044 = {
+  nl: {
+    title: "Cookies op de websites van Prudai",
+    description:
+      "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com); je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
+  },
+  en: {
+    title: "Cookies on Prudai websites",
+    description:
+      "We use analytics cookies to understand how visitors use our websites and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com); you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
+  },
+};
+const SITE = {
+  nl: {
+    title: "Cookies op deze website",
+    description:
+      "We gebruiken analytische cookies om te begrijpen hoe bezoekers deze website gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. Je keuze geldt voor deze website; je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
+  },
+  en: {
+    title: "Cookies on this website",
+    description:
+      "We use analytics cookies to understand how visitors use this website and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. Your choice applies to this website; you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
+  },
+};
+type Vertalingen = Record<"nl" | "en", { consentModal: { title: string; description: string } }>;
+const modals = () => {
+  const t = (laatsteConfig as unknown as { language: { translations: Vertalingen } }).language.translations;
+  return {
+    nl: { title: t.nl.consentModal.title, description: t.nl.consentModal.description },
+    en: { title: t.en.consentModal.title, description: t.en.consentModal.description },
+  };
+};
+
+describe("bannerbereik (v0.4.5)", () => {
+  test("standaard en 'prudai': titel en tekst in NL én EN exact die van v0.4.4", async () => {
+    await runConsent({ policyHref: "https://legal.prudai.com/privacy", onConsentChange: () => {} });
+    expect(modals()).toEqual(V044);
+    resetConsentForTests();
+    await runConsent({ bereik: "prudai", onConsentChange: () => {} });
+    expect(modals()).toEqual(V044);
+  });
+  test("'site': eigen tekst in NL en EN, geen prudai.com en geen meervoud", async () => {
+    await runConsent({ bereik: "site", onConsentChange: () => {} });
+    expect(modals()).toEqual(SITE);
+    expect(JSON.stringify(modals())).not.toMatch(/prudai\.com|onze websites|our websites|alle websites/);
+  });
+  test("initAnalytics geeft consent.bereik door aan de banner (de route die sites gebruiken)", async () => {
+    // initGtag leest window.location; in Bun is er geen, dus een nagebootste host buiten prudai.com.
+    const hadLocation = "location" in g;
+    const vorigeLocation = g.location;
+    g.location = { href: "https://ai-geletterdheid-training.nl/", hostname: "ai-geletterdheid-training.nl", pathname: "/", search: "" };
+    try {
+    laatsteConfig = null;
+    pakketroot.initAnalytics({ siteId: "test", googleAds: { conversionId: "AW-0000000000" }, consent: { bereik: "site" } });
+    for (let i = 0; i < 20 && !laatsteConfig; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(modals()).toEqual(SITE);
+    resetConsentForTests();
+    laatsteConfig = null;
+    pakketroot.initAnalytics({ siteId: "test", googleAds: { conversionId: "AW-0000000000" } });
+    for (let i = 0; i < 20 && !laatsteConfig; i++) await new Promise((r) => setTimeout(r, 5));
+    expect(modals()).toEqual(V044);
+    } finally {
+      if (hadLocation) g.location = vorigeLocation;
+      else delete g.location;
+    }
+  });
+});

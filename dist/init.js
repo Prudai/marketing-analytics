@@ -29,6 +29,7 @@ export function initAnalytics(config) {
         });
         void runConsent({
             policyHref: config.consent?.policyHref,
+            bereik: config.consent?.bereik,
             onConsentChange: applyConsent,
         });
     }

@@ -72,10 +72,29 @@ function wisbareCookies(naam) {
     const host = typeof location === "undefined" ? "" : location.hostname;
     return [{ name: naam }, ...wisDomeinen(host).map((domain) => ({ name: naam, domain }))];
 }
+const BEREIK_TEKST = {
+    prudai: {
+        nlTitel: "Cookies op de websites van Prudai",
+        nlWebsites: "onze websites",
+        nl: "Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com)",
+        enTitel: "Cookies on Prudai websites",
+        enWebsites: "our websites",
+        en: "Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com)",
+    },
+    site: {
+        nlTitel: "Cookies op deze website",
+        nlWebsites: "deze website",
+        nl: "Je keuze geldt voor deze website",
+        enTitel: "Cookies on this website",
+        enWebsites: "this website",
+        en: "Your choice applies to this website",
+    },
+};
 export async function runConsent(options) {
     const host = typeof location === "undefined" ? "" : location.hostname.toLowerCase();
     ruimOudeToestemmingOp(host);
     const domein = toestemmingsDomein(host);
+    const bereik = BEREIK_TEKST[options.bereik === "site" ? "site" : "prudai"];
     const applyCurrent = () => {
         options.onConsentChange({
             analytics: CookieConsent.acceptedCategory("analytics"),
@@ -157,8 +176,8 @@ export async function runConsent(options) {
             translations: {
                 nl: {
                     consentModal: {
-                        title: "Cookies op de websites van Prudai",
-                        description: "We gebruiken analytische cookies om te begrijpen hoe bezoekers onze websites gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. Je keuze geldt voor alle websites van Prudai (prudai.com en de sites daaronder, zoals leo.prudai.com); je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.",
+                        title: bereik.nlTitel,
+                        description: `We gebruiken analytische cookies om te begrijpen hoe bezoekers ${bereik.nlWebsites} gebruiken en, als je dat toestaat, cookies om te meten of onze advertenties (Google Ads) tot een aanvraag leiden. ${bereik.nl}; je kunt hem altijd wijzigen via 'Cookievoorkeuren' onderaan de pagina. Essentiële functies werken altijd zonder cookies.`,
                         acceptAllBtn: "Alles accepteren",
                         acceptNecessaryBtn: "Alleen noodzakelijk",
                         showPreferencesBtn: "Voorkeuren",
@@ -177,8 +196,8 @@ export async function runConsent(options) {
                 },
                 en: {
                     consentModal: {
-                        title: "Cookies on Prudai websites",
-                        description: "We use analytics cookies to understand how visitors use our websites and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. Your choice applies to all Prudai websites (prudai.com and the sites under it, such as leo.prudai.com); you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.",
+                        title: bereik.enTitel,
+                        description: `We use analytics cookies to understand how visitors use ${bereik.enWebsites} and, if you allow it, cookies to measure whether our ads (Google Ads) lead to a request. ${bereik.en}; you can change it at any time via 'Cookie preferences' at the bottom of the page. Essential features always work without cookies.`,
                         acceptAllBtn: "Accept all",
                         acceptNecessaryBtn: "Only necessary",
                         showPreferencesBtn: "Preferences",

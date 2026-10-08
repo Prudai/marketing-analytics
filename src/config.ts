@@ -15,5 +15,10 @@ export interface InitAnalyticsConfig {
   };
   consent?: {
     policyHref?: string;
+    /**
+     * Waar de keuze voor geldt in de bannertekst (v0.4.5): `prudai` (standaard, gedeeld op
+     * .prudai.com) of `site` (eigen domein buiten prudai.com: "je keuze geldt voor deze website").
+     */
+    bereik?: "prudai" | "site";
   };
 }

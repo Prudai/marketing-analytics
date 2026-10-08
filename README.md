@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.4 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.5 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -27,6 +27,12 @@ initAnalytics({
   consent: { policyHref: "https://legal.prudai.com/privacy" },
 });
 ```
+
+**Own domain outside prudai.com (v0.4.5):** pass `consent: { policyHref, bereik: "site" }`. The banner then says
+"Je keuze geldt voor deze website" / "Your choice applies to this website" instead of claiming the shared
+.prudai.com choice (which does not reach another domain; the cookie follows the host there anyway). The
+default (`bereik` omitted or `"prudai"`) is byte-for-byte the v0.4.4 text, so prudai.com sites need no change.
+First user: ai-geletterdheid-training.nl.
 
 Event helpers:
 
