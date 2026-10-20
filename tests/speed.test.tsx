@@ -12,9 +12,9 @@ mock.module("@vercel/speed-insights/react", () => ({
 const { SpeedInsights, SPEED_INSIGHTS_SAMPLE_RATE } = await import("../src");
 
 describe("SpeedInsights", () => {
-  test("geeft standaard de gedeelde sampleRate 0,25 door", () => {
-    expect(SPEED_INSIGHTS_SAMPLE_RATE).toBe(0.25);
-    expect(renderToStaticMarkup(<SpeedInsights />)).toBe('<i data-sample-rate="0.25"></i>');
+  test("geeft standaard de gedeelde sampleRate 0,2 door", () => {
+    expect(SPEED_INSIGHTS_SAMPLE_RATE).toBe(0.2);
+    expect(renderToStaticMarkup(<SpeedInsights />)).toBe('<i data-sample-rate="0.2"></i>');
   });
 
   test("een site kan de sampleRate overschrijven; overige props gaan mee", () => {
