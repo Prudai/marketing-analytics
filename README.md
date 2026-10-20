@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.5 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.6 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -57,6 +57,28 @@ export function App() {
   );
 }
 ```
+
+**Sample rate (v0.4.6, decision Beau 19-10-2026: no paid plan).** `SpeedInsights` measures 25% of
+page views by default (`SPEED_INSIGHTS_SAMPLE_RATE = 0.25`). The free Speed Insights tier is
+10,000 events per rolling 30 days, **shared by the whole Vercel team**; a team that crosses it is
+paused for at least 14 days, and stays paused while the last 30 days are above 5,000 (Vercel docs,
+"Limits and Pricing for Speed Insights", read 20-10-2026). In October 2026 the pause hit 4 days
+after collection had resumed, so all sites lost their data (including geo for the daily report) for weeks.
+
+How 0.25 was derived (20-10-2026):
+
+- Demand: `/_vercel/speed-insights/vitals` beacons in the log drain (`visits`), 16-09..19-10:
+  at most ~13,400 per rolling 30 days, ~99% from prudai-website and product-page-leo; the other
+  sites together ~90.
+- Events per beacon: Vercel `*_count` metrics (`vercel metrics vercel.speed_insights.<m>_count`)
+  divided by beacons for the unpaused full days 05..07-10: 1.73 / 2.15 / 2.32, pooled 2.04.
+- 13,400 × 2.04 × 0.25 ≈ 6,800 events (68%); at 2.32 per beacon ≈ 7,800, still under the
+  8,000 that leaves a 20% margin. 0.3 would be ≈ 8,200 and miss the margin.
+
+A site can override it (`<SpeedInsights sampleRate={0.5} />`); `0` renders nothing (the Vercel
+package treats a falsy rate as "measure everything"). The rate is shared because the quota is:
+raising it on one site eats into all the others. Re-check when traffic grows: beacons per 30 days
+× 2.04 × rate must stay under 8,000.
 
 Cookie preferences link (since v0.4.1). Withdrawing consent must be as easy as giving it
 (GDPR art. 7(3)), so a site puts a "Cookievoorkeuren" / "Cookie preferences" link in its
