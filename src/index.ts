@@ -9,7 +9,8 @@ export {
 } from "./ga4/events";
 export type { EventParams } from "./ga4/events";
 
-export { SpeedInsights } from "./speed";
+export { SpeedInsights, SPEED_INSIGHTS_SAMPLE_RATE } from "./speed";
+export type { SpeedInsightsProps } from "./speed";
 export { Sentry } from "./sentry/init";
 
 export { CookieConsent, openCookieVoorkeuren } from "./consent/run";
