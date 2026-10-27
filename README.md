@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.6 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.7 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
