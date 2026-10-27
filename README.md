@@ -50,9 +50,12 @@ What this means for a site:
   reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
   window are lost, just as before any `init`.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
-  `Sentry.addEventProcessor` right after `initAnalytics`) keeps `@sentry/react` in its own main chunk,
-  so it gets the later start but not the smaller bundle. Event processors, tags and user set through it
-  before the lazy start live on the global scopes and apply once Sentry is up.
+  `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
+  client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz
+  without the export). Event processors added through it before the lazy start sit on the isolation
+  scope, which `Sentry.init` keeps, so they also apply to the buffered errors.
+- With `tracesSampleRate > 0` tracing now starts after the lazy init, so the pageload span starts late.
+  No site sets it today.
 - A test (`tests/sentry-lazy.test.ts`) fails as soon as `src/init.ts` reaches `@sentry/*` through a
   static import again.
 

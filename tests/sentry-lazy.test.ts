@@ -6,8 +6,14 @@ import { dirname, join, resolve } from "node:path";
 // Sentry zelf. Het echte gedrag in een browser (eigen chunk, banner eerst) is met Lighthouse
 // op een build van product-page-zia gemeten (zie de PR).
 const sentryAanroepen: { fn: string; args: unknown[] }[] = [];
+let initGooit = false;
+// Let op: bun houdt deze module-mock de rest van het testproces actief; de andere testbestanden
+// gebruiken @sentry/react niet anders dan via de (ongebruikte) `Sentry`-export.
 mock.module("@sentry/react", () => ({
-  init: (...args: unknown[]) => void sentryAanroepen.push({ fn: "init", args }),
+  init: (...args: unknown[]) => {
+    sentryAanroepen.push({ fn: "init", args });
+    if (initGooit) throw new Error("init faalt");
+  },
   captureException: (...args: unknown[]) => void sentryAanroepen.push({ fn: "captureException", args }),
   browserTracingIntegration: () => ({ name: "BrowserTracing" }),
   addEventProcessor: () => undefined,
@@ -36,7 +42,9 @@ function stuur(type: string, e: unknown) {
 
 const g = globalThis as unknown as Record<string, unknown>;
 const hadWindow = "window" in g;
+const vorigeWindow = g.window;
 const hadDocument = "document" in g;
+const vorigeDocument = g.document;
 g.window = fakeWindow;
 g.document = { readyState: "complete", referrer: "" };
 
@@ -67,14 +75,16 @@ beforeEach(() => {
   sentryAanroepen.length = 0;
   rustTaken.length = 0;
   rustOpties = [];
+  initGooit = false;
   listeners.clear();
   (g.document as { readyState: string }).readyState = "complete";
 });
 
 afterAll(() => {
-  if (hadWindow) g.window = globalThis;
+  if (hadWindow) g.window = vorigeWindow;
   else delete g.window;
-  if (!hadDocument) delete g.document;
+  if (hadDocument) g.document = vorigeDocument;
+  else delete g.document;
 });
 
 describe("Sentry lui laden (v0.4.7)", () => {
@@ -144,6 +154,16 @@ describe("Sentry lui laden (v0.4.7)", () => {
     expect(sentryAanroepen[1]!.args).toEqual([fout, { mechanism: { type: "onerror", handled: false } }]);
     expect(sentryAanroepen[2]!.args).toEqual(["weg", { mechanism: { type: "onunhandledrejection", handled: false } }]);
     // Na init vangt Sentry's eigen handler alles; onze buffer luistert niet meer.
+    expect(listeners.get("error")?.size ?? 0).toBe(0);
+    expect(listeners.get("unhandledrejection")?.size ?? 0).toBe(0);
+  });
+
+  test("mislukt het starten (chunk of init), dan luistert de buffer ook niet meer", async () => {
+    initGooit = true;
+    scheduleSentry(OPTS);
+    expect(listeners.get("error")?.size ?? 0).toBe(1);
+    await rust();
+    for (let i = 0; i < 20 && (listeners.get("error")?.size ?? 0) > 0; i++) await slaap(5);
     expect(listeners.get("error")?.size ?? 0).toBe(0);
     expect(listeners.get("unhandledrejection")?.size ?? 0).toBe(0);
   });
