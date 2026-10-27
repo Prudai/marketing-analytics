@@ -34,6 +34,28 @@ initAnalytics({
 default (`bereik` omitted or `"prudai"`) is byte-for-byte the v0.4.4 text, so prudai.com sites need no change.
 First user: ai-geletterdheid-training.nl.
 
+**Sentry/GlitchTip loads lazily (v0.4.7).** `initAnalytics` no longer imports `@sentry/react`
+statically. It loads it with a dynamic `import()` (its own chunk in the site's bundle) 1 s after the
+`load` event, on an idle moment (`requestIdleCallback`, at most 3 s; `setTimeout` where that does not
+exist). Before, Sentry (~40 KB gz) sat in the same critical chunk as the cookie banner, and on mobile the
+banner text (`#cm__desc`) is the LCP element. Measured on product-page-zia (local build, Lighthouse
+mobile, median of 5, 27-10-2026): critical JS 141 → 103 KB gz, FCP 1.70 → 1.42 s, LCP 3.08 → 2.86 s,
+score 93 → 95. The 1 s wait matters: loading the chunk right at `load` still started it before the
+banner had faded in, and Lighthouse then counted it into the LCP (3.24 s, worse than before).
+
+What this means for a site:
+
+- No code change needed; `initAnalytics(config)` is unchanged.
+- Uncaught errors and unhandled rejections from before Sentry starts are buffered (at most 10) and
+  reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
+  window are lost, just as before any `init`.
+- The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
+  `Sentry.addEventProcessor` right after `initAnalytics`) keeps `@sentry/react` in its own main chunk,
+  so it gets the later start but not the smaller bundle. Event processors, tags and user set through it
+  before the lazy start live on the global scopes and apply once Sentry is up.
+- A test (`tests/sentry-lazy.test.ts`) fails as soon as `src/init.ts` reaches `@sentry/*` through a
+  static import again.
+
 Event helpers:
 
 ```ts

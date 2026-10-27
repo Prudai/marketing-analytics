@@ -3,15 +3,21 @@
  * statisch en startte het vóór de cookiebanner: de banner zat daardoor in dezelfde kritieke
  * bundel als ~40 KB gz Sentry, en op mobiel was de bannertekst (`#cm__desc`) het LCP-element.
  *
- * Nu: `import("./init")` (een eigen chunk in de bundel van de site) pas als de pagina geladen is
- * én de browser even niets te doen heeft (`requestIdleCallback`, uiterlijk na `IDLE_TIMEOUT_MS`;
- * zonder `requestIdleCallback` een `setTimeout`). Fouten die in de tussentijd vallen, vangt een
- * kleine buffer op; die worden na `Sentry.init` alsnog gemeld (maximaal `MAX_VROEGE_FOUTEN`).
+ * Nu: `import("./init")` (een eigen chunk in de bundel van de site) pas `NA_LOAD_MS` na het
+ * `load`-event én als de browser even niets te doen heeft (`requestIdleCallback`, uiterlijk na
+ * `IDLE_TIMEOUT_MS`; zonder `requestIdleCallback` een `setTimeout`). De wachttijd na `load` is er
+ * omdat de banner pas ~100 ms na `CookieConsent.run()` met een CSS-overgang inschuift: direct na
+ * `load` viel het ophalen van de chunk nog vóór de LCP (gemeten met Lighthouse op
+ * product-page-zia, 27-10-2026: chunk op 216 ms, LCP op 274 ms), en dan rekent Lighthouse hem in
+ * de LCP mee. Fouten die in de tussentijd vallen, vangt een kleine buffer op; die worden na
+ * `Sentry.init` alsnog gemeld (maximaal `MAX_VROEGE_FOUTEN`).
  */
+export const NA_LOAD_MS = 1000;
 export const IDLE_TIMEOUT_MS = 3000;
 export const MAX_VROEGE_FOUTEN = 10;
 let gepland = false;
-/** Roep `fn` aan na het `load`-event, op een rustig moment. */
+let naLoadMs = NA_LOAD_MS;
+/** Roep `fn` aan `naLoadMs` na het `load`-event, op een rustig moment. */
 function naLadenEnRust(win, fn) {
     const opRust = () => {
         if (typeof win.requestIdleCallback === "function")
@@ -19,11 +25,12 @@ function naLadenEnRust(win, fn) {
         else
             setTimeout(fn, 1);
     };
+    const naLoad = () => setTimeout(opRust, naLoadMs);
     const doc = typeof document === "undefined" ? undefined : document;
     if (doc?.readyState === "complete" || typeof win.addEventListener !== "function")
-        opRust();
+        naLoad();
     else
-        win.addEventListener("load", opRust, { once: true });
+        win.addEventListener("load", naLoad, { once: true });
 }
 export function scheduleSentry(options) {
     if (typeof window === "undefined" || !options.dsn || gepland)
@@ -63,7 +70,8 @@ export function scheduleSentry(options) {
     });
 }
 /** @internal Alleen voor tests. Niet via de pakketroot. */
-export function resetSentryScheduleForTests() {
+export function resetSentryScheduleForTests(wachtNaLoadMs = NA_LOAD_MS) {
     gepland = false;
+    naLoadMs = wachtNaLoadMs;
 }
 //# sourceMappingURL=lazy.js.map

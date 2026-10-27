@@ -40,14 +40,19 @@ const hadDocument = "document" in g;
 g.window = fakeWindow;
 g.document = { readyState: "complete", referrer: "" };
 
-const { scheduleSentry, resetSentryScheduleForTests, MAX_VROEGE_FOUTEN, IDLE_TIMEOUT_MS } = await import(
+const { scheduleSentry, resetSentryScheduleForTests, MAX_VROEGE_FOUTEN, IDLE_TIMEOUT_MS, NA_LOAD_MS } = await import(
   "../src/sentry/lazy"
 );
 const { resetSentryForTests } = await import("../src/sentry/init");
 const { initAnalytics } = await import("../src/init");
 
-/** Laat de geplande rustmomenten lopen en wacht tot de dynamische import en init klaar zijn. */
+/** De wachttijd na `load` in deze tests (in productie `NA_LOAD_MS`). */
+const WACHT_MS = 5;
+const slaap = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Laat de wachttijd verstrijken, speel de rustmomenten af en wacht op import en init. */
 async function rust() {
+  await slaap(WACHT_MS + 5);
   while (rustTaken.length) rustTaken.shift()!();
   for (let i = 0; i < 20 && !sentryAanroepen.some((a) => a.fn === "init"); i++) {
     await new Promise((r) => setTimeout(r, 5));
@@ -57,7 +62,7 @@ async function rust() {
 const OPTS = { dsn: "https://key@errors.example.test/1", environment: "test", release: "r1" };
 
 beforeEach(() => {
-  resetSentryScheduleForTests();
+  resetSentryScheduleForTests(WACHT_MS);
   resetSentryForTests();
   sentryAanroepen.length = 0;
   rustTaken.length = 0;
@@ -76,6 +81,9 @@ describe("Sentry lui laden (v0.4.7)", () => {
   test("initAnalytics start Sentry niet synchroon, maar op een rustmoment", async () => {
     initAnalytics({ siteId: "test", sentry: { dsn: OPTS.dsn, tracesSampleRate: 0 }, environment: "test", release: "r1" });
     expect(sentryAanroepen).toHaveLength(0);
+    // Eerst de wachttijd na load (de banner schuift nog in), dan pas een rustmoment.
+    expect(rustTaken).toHaveLength(0);
+    await slaap(WACHT_MS + 5);
     expect(rustTaken).toHaveLength(1);
     expect(rustOpties[0]).toEqual({ timeout: IDLE_TIMEOUT_MS });
     await rust();
@@ -91,9 +99,14 @@ describe("Sentry lui laden (v0.4.7)", () => {
     });
   });
 
+  test("standaard wacht het pakket 1 s na load", () => {
+    expect(NA_LOAD_MS).toBe(1000);
+  });
+
   test("zonder dsn: niets gepland, niets geladen", async () => {
     initAnalytics({ siteId: "test" });
     scheduleSentry({ dsn: "" });
+    await slaap(WACHT_MS + 5);
     expect(rustTaken).toHaveLength(0);
     expect(listeners.get("error")?.size ?? 0).toBe(0);
   });
@@ -101,8 +114,10 @@ describe("Sentry lui laden (v0.4.7)", () => {
   test("wacht op het load-event als de pagina nog laadt", async () => {
     (g.document as { readyState: string }).readyState = "loading";
     scheduleSentry(OPTS);
+    await slaap(WACHT_MS + 5);
     expect(rustTaken).toHaveLength(0);
     stuur("load", {});
+    await slaap(WACHT_MS + 5);
     expect(rustTaken).toHaveLength(1);
     await rust();
     expect(sentryAanroepen.filter((a) => a.fn === "init")).toHaveLength(1);
@@ -111,6 +126,7 @@ describe("Sentry lui laden (v0.4.7)", () => {
   test("twee keer plannen start Sentry één keer", async () => {
     scheduleSentry(OPTS);
     scheduleSentry(OPTS);
+    await slaap(WACHT_MS + 5);
     expect(rustTaken).toHaveLength(1);
     await rust();
     expect(sentryAanroepen.filter((a) => a.fn === "init")).toHaveLength(1);
