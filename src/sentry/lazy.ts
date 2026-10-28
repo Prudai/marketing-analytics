@@ -16,7 +16,7 @@ import type { SentryInitOptions, VroegeFout } from "./init";
  * `Sentry.init` alsnog gemeld (maximaal `MAX_VROEGE_FOUTEN`).
  *
  * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
- * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
+ * start, dan gaat de buffer als noodroute met een `fetch` met `keepalive` weg (./beacon); (2) een mislukte
  * `import()` wordt één keer opnieuw geprobeerd (met een extra queryparameter op dezelfde chunk, omdat
  * elke engine een mislukte import voor dezelfde URL onthoudt; zonder URL in de foutmelding, Safari,
  * geen tweede poging), en lukt het dan nog niet, dan gaat de buffer ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
@@ -98,12 +98,15 @@ export function scheduleSentry(options: SentryInitOptions): void {
   const opAfwijzing = (e: PromiseRejectionEvent) => {
     if (vroeg.length < MAX_VROEGE_FOUTEN) vroeg.push({ fout: e.reason, soort: "onunhandledrejection", tijd: Date.now() });
   };
-  // Noodroute: wat nu in de buffer staat gaat per beacon weg en wordt níét meer na init gemeld
-  // (anders kwam het dubbel binnen als de pagina uit de bfcache terugkomt).
-  const spoelNaarBeacon = (fouten: VroegeFout[] = vroeg.splice(0)) => {
-    // `noodroute: false`: de site heeft event processors die schonen en die draaien niet op deze route.
-    if (options.noodroute === false || fouten.length === 0) return;
-    stuurFoutenMetBeacon(options, fouten);
+  // Noodroute: wat nu in de buffer staat gaat per `fetch` weg en wordt níét meer na init gemeld
+  // (anders kwam het dubbel binnen als de pagina uit de bfcache terugkomt). Bij `noodroute: false`
+  // (de site heeft event processors die schonen en die draaien niet op deze route) blijft de buffer
+  // juist staan voor de SDK: dus eerst die check, pas daarna de buffer legen.
+  const spoelNaarBeacon = (fouten?: VroegeFout[]) => {
+    if (options.noodroute === false) return;
+    const lijst = fouten ?? vroeg.splice(0);
+    if (lijst.length === 0) return;
+    stuurFoutenMetBeacon(options, lijst);
   };
   const opPagehide = () => spoelNaarBeacon();
   const opVerborgen = () => {

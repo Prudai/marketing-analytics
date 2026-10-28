@@ -271,6 +271,21 @@ describe("hardening (v0.4.8)", () => {
     }
   });
 
+  test("Sentry wordt ook gepland vóór herkomst: een fout in legHerkomstVast slaat Sentry niet over", () => {
+    (fakeWindow as Record<string, unknown>).location = {
+      get pathname(): string {
+        throw new Error("herkomst kapot");
+      },
+      search: "",
+    };
+    try {
+      expect(() => initAnalytics({ siteId: "t", sentry: { dsn: OPTS.dsn } })).toThrow("herkomst kapot");
+      expect(listeners.get("error")?.size).toBe(1);
+    } finally {
+      delete (fakeWindow as Record<string, unknown>).location;
+    }
+  });
+
   test("pagehide vóór de start: de buffer gaat weg zonder cookies en komt na init niet nog eens", async () => {
     scheduleSentry(OPTS);
     stuur("error", { error: new TypeError("weg bij vertrek") });
@@ -283,7 +298,7 @@ describe("hardening (v0.4.8)", () => {
     expect(eerste.init).toMatchObject({ method: "POST", keepalive: true, credentials: "omit", headers: { "content-type": "text/plain;charset=UTF-8" } });
     expect(eerste.itemkop).toEqual({ type: "event" });
     expect(eerste.event.exception.values[0]).toMatchObject({ type: "TypeError", value: "weg bij vertrek", mechanism: { type: "onerror", handled: false } });
-    expect(eerste.event.tags).toEqual({ via: "pagehide-beacon" });
+    expect(eerste.event.tags).toEqual({ via: "noodroute" });
     expect(eerste.event.environment).toBe("test");
     expect(eerste.event.release).toBe("r1");
     expect(leesBeacon(1).event.exception.values[0].mechanism.type).toBe("onunhandledrejection");
@@ -343,17 +358,64 @@ describe("hardening (v0.4.8)", () => {
     expect(beacons).toHaveLength(0);
   });
 
-  test("noodroute: false (site met event processors): nooit een beacon, ook niet na een mislukte chunk", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 10);
-    zetInitLaderVoorTests(() => Promise.reject(new Error("geen URL")));
-    scheduleSentry({ ...OPTS, noodroute: false });
-    stuur("error", { error: new Error("a") });
-    stuur("pagehide", {});
-    fakeDocument.visibilityState = "hidden";
-    stuurDoc("visibilitychange");
-    await rust();
-    await slaap(40);
-    expect(beacons).toHaveLength(0);
+  describe("noodroute: false (site met event processors die schonen)", () => {
+    const UIT = { ...OPTS, noodroute: false };
+
+    test("tabblad verborgen en weer zichtbaar: niets verstuurd, de buffer blijft voor de SDK", async () => {
+      scheduleSentry(UIT);
+      stuur("error", { error: new Error("blijft in de buffer") });
+      fakeDocument.visibilityState = "hidden";
+      stuurDoc("visibilitychange");
+      fakeDocument.visibilityState = "visible";
+      expect(beacons).toHaveLength(0);
+      await rust();
+      expect(sentryAanroepen.map((a) => a.fn)).toEqual(["init", "captureException"]);
+      expect(beacons).toHaveLength(0);
+    });
+
+    test("pagehide (bfcache-terugkeer): niets verstuurd, de SDK meldt de fout alsnog", async () => {
+      scheduleSentry(UIT);
+      stuur("error", { error: new Error("blijft") });
+      stuur("pagehide", {});
+      expect(beacons).toHaveLength(0);
+      await rust();
+      expect(sentryAanroepen.filter((a) => a.fn === "captureException")).toHaveLength(1);
+    });
+
+    test("Sentry.init zelf faalt: niets verstuurd", async () => {
+      initGooit = true;
+      scheduleSentry(UIT);
+      stuur("error", { error: new Error("a") });
+      await rust();
+      await slaap(30);
+      expect(beacons).toHaveLength(0);
+    });
+
+    test("chunk faalt (zonder eerder pagehide): niets verstuurd en de buffer stopt", async () => {
+      resetSentryScheduleForTests(WACHT_MS, 10);
+      zetInitLaderVoorTests(() => Promise.reject(new Error("geen URL")));
+      scheduleSentry(UIT);
+      stuur("error", { error: new Error("a") });
+      await rust();
+      await slaap(40);
+      expect(beacons).toHaveLength(0);
+      expect(listeners.get("error")?.size ?? 0).toBe(0);
+    });
+
+    test("chunk faalt twee keer met URL: niets verstuurd", async () => {
+      resetSentryScheduleForTests(WACHT_MS, 10);
+      await metOrigin(async () => {
+        zetInitLaderVoorTests(
+          () => Promise.reject(CHUNK_FOUT("https://x.test/assets/init-abc.js")),
+          (url) => Promise.reject(CHUNK_FOUT(url))
+        );
+        scheduleSentry(UIT);
+        stuur("error", { error: new Error("a") });
+        await rust();
+        await slaap(60);
+      });
+      expect(beacons).toHaveLength(0);
+    });
   });
 
   test("initAnalytics geeft sentry.noodroute door aan de planner", async () => {

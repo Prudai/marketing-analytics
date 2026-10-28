@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { BEACON_VERSIE, MAX_URL, MAX_WAARDE, bouwEnvelope, envelopeEindpunt, schoneUrl, stuurFoutenMetBeacon } from "../src/sentry/beacon";
+import { BEACON_VERSIE, MAX_KORT, MAX_URL, MAX_WAARDE, bouwEnvelope, envelopeEindpunt, schoneUrl, stuurFoutenMetBeacon } from "../src/sentry/beacon";
 
 const g = globalThis as unknown as Record<string, unknown>;
 const hadLocation = "location" in g;
@@ -13,7 +13,6 @@ const echteFetch = globalThis.fetch;
 
 const fetches: { url: string; init: RequestInit }[] = [];
 const beacons: { url: string; body: Blob }[] = [];
-let beaconAccepteert = true;
 const zetNavigator = (waarde: unknown) =>
   Object.defineProperty(globalThis, "navigator", { configurable: true, writable: true, value: waarde });
 
@@ -27,8 +26,7 @@ afterAll(() => {
 beforeEach(() => {
   fetches.length = 0;
   beacons.length = 0;
-  beaconAccepteert = true;
-  zetNavigator({ userAgent: "TestBrowser/1.0", sendBeacon: (url: string, body: Blob) => (beacons.push({ url, body }), beaconAccepteert) });
+  zetNavigator({ userAgent: "TestBrowser/1.0", sendBeacon: (url: string, body: Blob) => (beacons.push({ url, body }), true) });
   globalThis.fetch = ((url: string, init: RequestInit) => (fetches.push({ url, init }), Promise.resolve(new Response("{}")))) as typeof fetch;
 });
 
@@ -58,6 +56,14 @@ describe("envelopeEindpunt", () => {
 });
 
 describe("schoneUrl", () => {
+  test("geen userinfo, geen query, geen hash", () => {
+    expect(schoneUrl("https://u:p@host.test/a/12345?x=1#y")).toBe("https://host.test/a/12345");
+  });
+  test("de grenzen zijn 500 tekens (README)", () => {
+    expect(MAX_URL).toBe(500);
+    expect(MAX_WAARDE).toBe(500);
+    expect(MAX_KORT).toBe(100);
+  });
   test("zonder query en hash, afgekapt", () => {
     expect(schoneUrl("https://x.test/a/b?bestand=geheim.xlsx#kolom=1")).toBe("https://x.test/a/b");
     expect(schoneUrl(`https://x.test/${"p".repeat(2000)}`)).toHaveLength(MAX_URL);
@@ -81,13 +87,28 @@ describe("bouwEnvelope", () => {
       environment: "production",
       release: "abc",
       timestamp: 1_700_000_000,
-      tags: { via: "pagehide-beacon" },
+      tags: { via: "noodroute" },
       request: { url: "https://trust.prudai.com/controls", headers: { "User-Agent": "TestBrowser/1.0" } },
       exception: { values: [{ type: "RangeError", value: "buiten bereik", mechanism: { type: "onerror", handled: false } }] },
     });
     expect(JSON.stringify(event)).not.toContain("geheim");
     expect(JSON.stringify(event)).not.toContain("Tarief");
     expect(event.extra).toBeUndefined(); // geen ruwe stack: die herhaalt het bericht
+  });
+
+  test("elke envelope heeft een eigen event_id", () => {
+    const id = () => JSON.parse(bouwEnvelope({ dsn: DSN }, f(1)).split("\n")[0]!).event_id;
+    expect(id()).not.toBe(id());
+  });
+
+  test("foutnaam, omgeving en release zijn afgekapt", () => {
+    const fout = new Error("x");
+    fout.name = "N".repeat(500);
+    const [kop, , event] = bouwEnvelope({ dsn: DSN, environment: "e".repeat(500), release: "r".repeat(500) }, { fout, soort: "onerror" }).split("\n").map((r) => JSON.parse(r));
+    expect(kop.sdk.name).toBe("prudai.marketing-analytics.beacon");
+    expect(event.exception.values[0].type).toHaveLength(MAX_KORT);
+    expect(event.environment).toHaveLength(MAX_KORT);
+    expect(event.release).toHaveLength(MAX_KORT);
   });
 
   test("zonder tijd: de verzendtijd", () => {
@@ -146,23 +167,9 @@ describe("stuurFoutenMetBeacon", () => {
     expect(stuurFoutenMetBeacon({ dsn: DSN }, [f(1)])).toBe(1);
     await new Promise((r) => setTimeout(r, 5)); // geen unhandled rejection
   });
-  test("zonder fetch: sendBeacon als terugval, text/plain", async () => {
+  test("zonder fetch: niets, ook geen sendBeacon (dat stuurt de cookies van .prudai.com mee)", () => {
     (globalThis as { fetch?: unknown }).fetch = undefined;
-    expect(stuurFoutenMetBeacon({ dsn: DSN }, [f(1)])).toBe(1);
-    expect(beacons).toHaveLength(1);
-    expect(beacons[0]!.body.type).toBe("text/plain;charset=utf-8");
-    expect(await beacons[0]!.body.text()).toContain('"value":"e1"');
-  });
-  test("terugval: sendBeacon weigert (wachtrij vol) of gooit: niet meegeteld, geen fout", () => {
-    (globalThis as { fetch?: unknown }).fetch = undefined;
-    beaconAccepteert = false;
     expect(stuurFoutenMetBeacon({ dsn: DSN }, [f(1)])).toBe(0);
-    zetNavigator({ sendBeacon: () => { throw new Error("boem"); } });
-    expect(() => stuurFoutenMetBeacon({ dsn: DSN }, [f(1)])).not.toThrow();
-  });
-  test("geen fetch en geen sendBeacon: niets en geen fout", () => {
-    (globalThis as { fetch?: unknown }).fetch = undefined;
-    zetNavigator({});
-    expect(stuurFoutenMetBeacon({ dsn: DSN }, [f(1)])).toBe(0);
+    expect(beacons).toHaveLength(0);
   });
 });

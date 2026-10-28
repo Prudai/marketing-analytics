@@ -8,18 +8,22 @@ import type { VroegeFout } from "./init";
  *
  * Bewust minder dan een echt Sentry-event, en bewust voorzichtiger:
  * - `fetch` met `credentials: "omit"`. `navigator.sendBeacon` kan dat niet instellen en stuurt de
- *   cookies van `.prudai.com` (`cc_cookie`, `_ga*`) mee naar het GlitchTip-subdomein; dat is alleen
- *   een terugval voor engines zonder `fetch`.
+ *   cookies van `.prudai.com` (`cc_cookie`, `_ga*`) mee naar het GlitchTip-subdomein. Daarom is er
+ *   geen terugval op sendBeacon: elke engine die modulescripts draait kent `fetch`.
  * - Geen event processors: die leven in de SDK en draaien hier niet. Een site die ze nodig heeft om
  *   events te schonen zet `sentry.noodroute` op `false`. Daarom gaat er ook niets mee dat een
  *   processor normaal zou schonen: de URL zonder query en hash, geen ruwe stack, bericht afgekapt.
+ * - Wat een processor normaal zou schonen gaat dus wel mee: bericht (op 500 tekens), foutnaam en, bij een
+ *   niet-Error-afwijzing, de JSON van de reden. Een site waar dat niet mag zet `noodroute` op `false`.
  * - Geen geparste stacktrace, geen breadcrumbs, geen sessie. Elk event krijgt de tag
- *   `via: pagehide-beacon` zodat het in GlitchTip te herkennen is, en groepeert apart van SDK-events.
+ *   `via: noodroute` zodat het in GlitchTip te herkennen is, en groepeert apart van SDK-events.
  */
 export const BEACON_VERSIE = "0.4.8";
 // Eén envelope per fout en `keepalive` laat samen maximaal 64 KB in vlucht toe: 10 x ~3 KB past ruim.
 export const MAX_WAARDE = 500;
 export const MAX_URL = 500;
+/** Foutnaam, omgeving en release: kort, anders groeit een envelope boven de keepalive-grens. */
+export const MAX_KORT = 100;
 
 export interface BeaconOpties {
   dsn: string;
@@ -78,7 +82,7 @@ export function schoneUrl(href: string): string | undefined {
 export function bouwEnvelope(opties: BeaconOpties, f: VroegeFout, nu: number = Date.now()): string {
   const e = f.fout as { name?: unknown; message?: unknown } | null | undefined;
   const isFout = typeof e === "object" && e !== null && typeof e.message === "string";
-  const type = isFout ? (typeof e!.name === "string" && e!.name ? e!.name : "Error") : "UnhandledRejection";
+  const type = isFout ? knip(typeof e!.name === "string" && e!.name ? e!.name : "Error", MAX_KORT) : "UnhandledRejection";
   const waarde = isFout
     ? (e!.message as string)
     : `Non-Error ${f.soort === "onerror" ? "exception" : "promise rejection"} captured with value: ${alsTekst(f.fout)}`;
@@ -91,10 +95,10 @@ export function bouwEnvelope(opties: BeaconOpties, f: VroegeFout, nu: number = D
     timestamp: tijd / 1000,
     platform: "javascript",
     level: "error",
-    environment: opties.environment,
-    release: opties.release,
+    environment: opties.environment === undefined ? undefined : knip(opties.environment, MAX_KORT),
+    release: opties.release === undefined ? undefined : knip(opties.release, MAX_KORT),
     sdk: { name: "prudai.marketing-analytics.beacon", version: BEACON_VERSIE },
-    tags: { via: "pagehide-beacon" },
+    tags: { via: "noodroute" },
     request: url || ua ? { url, headers: ua ? { "User-Agent": ua } : undefined } : undefined,
     exception: {
       values: [{ type, value: knip(waarde, MAX_WAARDE), mechanism: { type: f.soort, handled: false } }],
@@ -128,9 +132,6 @@ export function stuurFoutenMetBeacon(opties: BeaconOpties, fouten: readonly Vroe
           headers: { "content-type": "text/plain;charset=UTF-8" },
         }).catch(() => {});
         verstuurd++;
-      } else if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-        // Terugval voor engines zonder fetch. Let op: stuurt cookies mee (zie boven).
-        if (navigator.sendBeacon(eindpunt, new Blob([body], { type: "text/plain;charset=UTF-8" }))) verstuurd++;
       }
     } catch {
       // Geen verzending mogelijk: de fout valt weg, zoals vóór v0.4.8.
