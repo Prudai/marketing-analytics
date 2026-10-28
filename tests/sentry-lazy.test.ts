@@ -113,6 +113,17 @@ describe("Sentry lui laden (v0.4.7)", () => {
     expect(NA_LOAD_MS).toBe(1000);
   });
 
+  test("de wachttijd na load wordt echt toegepast: vóór het verstrijken is er nog geen rustmoment gepland", async () => {
+    // Auditpunt 27-10: een hardgecodeerde wachttijd van 0 slaagde nog, omdat alleen de constante werd getoetst.
+    resetSentryScheduleForTests(80);
+    scheduleSentry(OPTS);
+    await slaap(20);
+    expect(rustTaken).toHaveLength(0);
+    expect(sentryAanroepen).toHaveLength(0);
+    await slaap(80);
+    expect(rustTaken).toHaveLength(1);
+  });
+
   test("zonder dsn: niets gepland, niets geladen", async () => {
     initAnalytics({ siteId: "test" });
     scheduleSentry({ dsn: "" });

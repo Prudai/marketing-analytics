@@ -48,14 +48,22 @@ What this means for a site:
 - No code change needed; `initAnalytics(config)` is unchanged.
 - Uncaught errors and unhandled rejections from before Sentry starts are buffered (at most 10) and
   reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
-  window are lost, just as before any `init`.
+  window are lost, **unlike in v0.4.6 and earlier**, where they worked right after `initAnalytics()`.
+- What the lazy start costs in error monitoring (measured with a real `@sentry/react` in Chromium,
+  27-10-2026): visitors who leave before Sentry has started (up to ~4 s after `load`) report nothing;
+  the buffer of 10 drops further errors silently (v0.4.6 reported all of them); if the chunk does not load
+  (offline, ad blocker, stale hash after a redeploy) monitoring is off for that page view, without retry;
+  buffered events carry the time they were reported (about 1 s after the real error), mechanism
+  `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; and a session starts late, so very
+  short visits do not count as a session.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
   `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
   client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz
   without the export). Event processors added through it before the lazy start sit on the isolation
   scope, which `Sentry.init` keeps, so they also apply to the buffered errors.
-- With `tracesSampleRate > 0` tracing now starts after the lazy init, so the pageload span starts late.
-  No site sets it today.
+- With `tracesSampleRate > 0` tracing now starts after the lazy init: fetch/XHR child spans and
+  `sentry-trace` headers from the first seconds are missing and the pageload idle span ends early. No
+  site sets it today.
 - A test (`tests/sentry-lazy.test.ts`) fails as soon as `src/init.ts` reaches `@sentry/*` through a
   static import again.
 
