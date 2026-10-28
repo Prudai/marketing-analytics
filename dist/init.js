@@ -16,6 +16,7 @@ export function initAnalytics(config) {
             environment: config.environment,
             release: config.release,
             tracesSampleRate: config.sentry.tracesSampleRate,
+            noodroute: config.sentry.noodroute,
         });
     }
     // Vóór de analytics-tags: waar kwam dit bezoek vandaan (landingspagina, verwijzer, utm,

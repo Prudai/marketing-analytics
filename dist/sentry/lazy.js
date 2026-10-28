@@ -16,8 +16,8 @@ import { stuurFoutenMetBeacon } from "./beacon";
  * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
  * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
  * `import()` wordt één keer opnieuw geprobeerd (met een extra queryparameter op dezelfde chunk, omdat
- * Chromium een mislukte import voor dezelfde URL onthoudt), en lukt het dan nog niet, dan gaat de buffer
- * ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
+ * elke engine een mislukte import voor dezelfde URL onthoudt; zonder URL in de foutmelding, Safari,
+ * geen tweede poging), en lukt het dan nog niet, dan gaat de buffer ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
  * fout daar Sentry niet meer overslaat.
  */
 export const NA_LOAD_MS = 1000;
@@ -33,16 +33,17 @@ let laadInit = () => import("./init");
 /** Importeert een volledige URL; een eigen variabele zodat tests dit kunnen nabootsen. */
 let importUrl = (url) => import(/* @vite-ignore */ url);
 /**
- * Een mislukte `import()` blijft in Chromium (en WebKit) voor die URL mislukt zolang de pagina leeft:
- * de module map onthoudt de fout, een tweede `import("./init")` haalt niets meer op (gemeten in Chromium
- * 145, 28-10-2026: één verzoek in plaats van twee). Dus de tweede poging gaat naar dezelfde chunk met een
- * extra queryparameter. De URL staat in de foutmelding van Chromium en Firefox (Safari noemt hem niet;
- * daar proberen we de gewone `import()` nog eens, wat in engines zonder foutcache wel werkt). Alleen een
- * URL op de eigen origin krijgt de parameter.
+ * Een mislukte `import()` blijft voor die URL mislukt zolang de pagina leeft: Chromium, Firefox en
+ * WebKit onthouden de fout in hun module map, een tweede `import("./init")` doet geen verzoek meer
+ * (gemeten 28-10-2026: Chromium 145/147, Firefox 142, WebKit 26.4). Dus de tweede poging gaat naar
+ * dezelfde chunk met een extra queryparameter. De URL staat in de foutmelding van Chromium en
+ * Firefox; WebKit noemt hem niet ("Importing a module script failed."). Zonder URL is er dus geen
+ * werkende tweede poging (Safari): dan meteen door naar de noodroute. Alleen een URL op de eigen
+ * origin krijgt de parameter.
  */
 export function chunkUrlUitFout(fout, origin = typeof location === "undefined" ? undefined : location.origin) {
-    const bericht = fout instanceof Error ? fout.message : typeof fout === "string" ? fout : "";
-    const m = bericht.match(/https?:\/\/[^\s"')]+?\.m?js(?:\?[^\s"')]*)?/);
+    const bericht = (fout instanceof Error ? fout.message : typeof fout === "string" ? fout : "").slice(0, 2000);
+    const m = bericht.match(/https?:\/\/[^\s"')]+?\.m?js(?=$|[\s"')?])(?:\?[^\s"')]*)?/);
     if (!m || !origin)
         return undefined;
     try {
@@ -52,14 +53,14 @@ export function chunkUrlUitFout(fout, origin = typeof location === "undefined" ?
         return undefined;
     }
 }
-/** Eén `import()`, bij een fout (netwerk, adblocker) na `opnieuwNaMs` nog één poging. */
+/** Eén `import()`, bij een fout met een chunk-URL na `opnieuwNaMs` één poging met `?r=`; anders de fout door. */
 function laadInitMetEenKeerOpnieuw() {
-    return laadInit().catch((fout) => new Promise((klaar) => setTimeout(klaar, opnieuwNaMs)).then(() => {
+    return laadInit().catch((fout) => {
         const url = chunkUrlUitFout(fout);
         if (!url)
-            return laadInit();
-        return importUrl(`${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}`);
-    }));
+            throw fout;
+        return new Promise((klaar) => setTimeout(klaar, opnieuwNaMs)).then(() => importUrl(`${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}`));
+    });
 }
 /** Roep `fn` aan `naLoadMs` na het `load`-event, op een rustig moment. */
 function naLadenEnRust(win, fn) {
@@ -94,11 +95,13 @@ export function scheduleSentry(options) {
     };
     // Noodroute: wat nu in de buffer staat gaat per beacon weg en wordt níét meer na init gemeld
     // (anders kwam het dubbel binnen als de pagina uit de bfcache terugkomt).
-    const spoelNaarBeacon = () => {
-        if (vroeg.length === 0)
+    const spoelNaarBeacon = (fouten = vroeg.splice(0)) => {
+        // `noodroute: false`: de site heeft event processors die schonen en die draaien niet op deze route.
+        if (options.noodroute === false || fouten.length === 0)
             return;
-        stuurFoutenMetBeacon(options, vroeg.splice(0));
+        stuurFoutenMetBeacon(options, fouten);
     };
+    const opPagehide = () => spoelNaarBeacon();
     const opVerborgen = () => {
         if (doc?.visibilityState === "hidden")
             spoelNaarBeacon();
@@ -108,7 +111,7 @@ export function scheduleSentry(options) {
     if (luistert) {
         win.addEventListener("error", opFout);
         win.addEventListener("unhandledrejection", opAfwijzing);
-        win.addEventListener("pagehide", spoelNaarBeacon);
+        win.addEventListener("pagehide", opPagehide);
     }
     if (luistertDoc)
         doc.addEventListener("visibilitychange", opVerborgen);
@@ -116,7 +119,7 @@ export function scheduleSentry(options) {
         if (luistert) {
             win.removeEventListener("error", opFout);
             win.removeEventListener("unhandledrejection", opAfwijzing);
-            win.removeEventListener("pagehide", spoelNaarBeacon);
+            win.removeEventListener("pagehide", opPagehide);
         }
         if (luistertDoc)
             doc.removeEventListener("visibilitychange", opVerborgen);
@@ -125,7 +128,14 @@ export function scheduleSentry(options) {
         laadInitMetEenKeerOpnieuw()
             .then(({ initSentry }) => {
             // In één taak: Sentry's eigen handlers staan na init, dus er valt geen fout tussen.
-            initSentry(options, vroeg.splice(0));
+            const fouten = vroeg.splice(0);
+            try {
+                initSentry(options, fouten);
+            }
+            catch {
+                // Init zelf faalde: dan zijn de gebufferde fouten nog niet gemeld, ga naar de noodroute.
+                spoelNaarBeacon(fouten);
+            }
             stopBuffer();
         })
             // Chunk ook na een nieuwe poging niet te laden (offline, adblocker, verlopen hash): de site

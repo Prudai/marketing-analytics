@@ -18,6 +18,7 @@ export function initAnalytics(config: InitAnalyticsConfig): void {
       environment: config.environment,
       release: config.release,
       tracesSampleRate: config.sentry.tracesSampleRate,
+      noodroute: config.sentry.noodroute,
     });
   }
 

@@ -59,14 +59,12 @@ const fakeDocument = {
 function stuurDoc(type: string) {
   for (const fn of [...(docListeners.get(type) ?? [])]) fn({});
 }
-// Beacons die het pakket als noodroute verstuurt (navigator.sendBeacon).
-const beacons: { url: string; body: Blob }[] = [];
-const vorigeNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
-Object.defineProperty(globalThis, "navigator", {
-  configurable: true,
-  writable: true,
-  value: { sendBeacon: (url: string, body: Blob) => (beacons.push({ url, body }), true) },
-});
+// Beacons die het pakket als noodroute verstuurt: `fetch` met keepalive en zonder cookies.
+const beacons: { url: string; body: string; init: RequestInit }[] = [];
+const echteFetch = globalThis.fetch;
+globalThis.fetch = ((url: string | URL, init?: RequestInit) => (
+  beacons.push({ url: String(url), body: String(init?.body), init: init ?? {} }), Promise.resolve(new Response("{}"))
+)) as typeof fetch;
 g.window = fakeWindow;
 g.document = fakeDocument;
 
@@ -121,8 +119,7 @@ afterAll(() => {
   else delete g.window;
   if (hadDocument) g.document = vorigeDocument;
   else delete g.document;
-  if (vorigeNavigator) Object.defineProperty(globalThis, "navigator", vorigeNavigator);
-  else delete (globalThis as { navigator?: unknown }).navigator;
+  globalThis.fetch = echteFetch;
 });
 
 describe("Sentry lui laden (v0.4.7)", () => {
@@ -239,10 +236,19 @@ describe("Sentry lui laden (v0.4.7)", () => {
 });
 
 describe("hardening (v0.4.8)", () => {
-  const leesBeacon = async (i: number) => {
-    const { url, body } = beacons[i]!;
-    const [kop, itemkop, event] = (await body.text()).split("\n");
-    return { url, body, kop: JSON.parse(kop!), itemkop: JSON.parse(itemkop!), event: JSON.parse(event!) };
+  const leesBeacon = (i: number) => {
+    const { url, body, init } = beacons[i]!;
+    const [kop, itemkop, event] = body.split("\n");
+    return { url, init, kop: JSON.parse(kop!), itemkop: JSON.parse(itemkop!), event: JSON.parse(event!) };
+  };
+  const CHUNK_FOUT = (url: string) => new TypeError(`Failed to fetch dynamically imported module: ${url}`);
+  const metOrigin = async (fn: () => Promise<void>) => {
+    g.location = { origin: "https://x.test", href: "https://x.test/pagina?bestand=geheim.xlsx#kolom=4" };
+    try {
+      await fn();
+    } finally {
+      delete g.location;
+    }
   };
 
   test("Sentry wordt gepland vóór het GA4/consent-blok: een fout daarin slaat Sentry niet meer over", () => {
@@ -265,37 +271,49 @@ describe("hardening (v0.4.8)", () => {
     }
   });
 
-  test("pagehide vóór de start: de buffer gaat als beacon weg en komt na init niet nog eens", async () => {
+  test("pagehide vóór de start: de buffer gaat weg zonder cookies en komt na init niet nog eens", async () => {
     scheduleSentry(OPTS);
     stuur("error", { error: new TypeError("weg bij vertrek") });
     stuur("unhandledrejection", { reason: "afgewezen" });
     stuur("pagehide", {});
     expect(beacons).toHaveLength(2);
-    const eerste = await leesBeacon(0);
+    const eerste = leesBeacon(0);
     expect(eerste.url).toBe("https://errors.example.test/api/1/envelope/?sentry_key=key&sentry_version=7&sentry_client=prudai.marketing-analytics.beacon%2F0.4.8");
-    expect(eerste.body.type).toBe("text/plain;charset=utf-8");
+    // Geen cookies (de DSN-host zit op hetzelfde registreerbare domein), overleeft het sluiten van de pagina, geen preflight.
+    expect(eerste.init).toMatchObject({ method: "POST", keepalive: true, credentials: "omit", headers: { "content-type": "text/plain;charset=UTF-8" } });
     expect(eerste.itemkop).toEqual({ type: "event" });
     expect(eerste.event.exception.values[0]).toMatchObject({ type: "TypeError", value: "weg bij vertrek", mechanism: { type: "onerror", handled: false } });
     expect(eerste.event.tags).toEqual({ via: "pagehide-beacon" });
     expect(eerste.event.environment).toBe("test");
     expect(eerste.event.release).toBe("r1");
-    const tweede = await leesBeacon(1);
-    expect(tweede.event.exception.values[0].mechanism.type).toBe("onunhandledrejection");
+    expect(leesBeacon(1).event.exception.values[0].mechanism.type).toBe("onunhandledrejection");
     // Pagina overleeft (bfcache): Sentry start later en meldt de al verstuurde fouten niet nog eens.
     await rust();
     expect(sentryAanroepen.filter((a) => a.fn === "captureException")).toHaveLength(0);
     expect(beacons).toHaveLength(2);
   });
 
-  test("een beacon draagt het tijdstip van de fout, niet van het vertrek", async () => {
+  test("een beacon draagt het tijdstip van de fout (ook bij een afwijzing), niet van het vertrek", async () => {
     scheduleSentry(OPTS);
     const voor = Date.now();
     stuur("error", { error: new Error("eerder") });
+    stuur("unhandledrejection", { reason: new Error("ook eerder") });
     await slaap(60);
     stuur("pagehide", {});
-    const { event } = await leesBeacon(0);
-    expect(event.timestamp * 1000).toBeGreaterThanOrEqual(voor - 1);
-    expect(event.timestamp * 1000).toBeLessThan(Date.now() - 40);
+    for (const i of [0, 1]) {
+      const { event } = leesBeacon(i);
+      expect(event.timestamp * 1000).toBeGreaterThanOrEqual(voor - 1);
+      expect(event.timestamp * 1000).toBeLessThan(Date.now() - 40);
+    }
+  });
+
+  test("de URL in een beacon heeft geen query en geen hash", async () => {
+    await metOrigin(async () => {
+      scheduleSentry(OPTS);
+      stuur("error", { error: new Error("x") });
+      stuur("pagehide", {});
+    });
+    expect(leesBeacon(0).event.request.url).toBe("https://x.test/pagina");
   });
 
   test("tabblad verborgen vóór de start: zelfde noodroute; zichtbaar of lege buffer: niets", async () => {
@@ -325,101 +343,145 @@ describe("hardening (v0.4.8)", () => {
     expect(beacons).toHaveLength(0);
   });
 
-  test("onbruikbare dsn of geen sendBeacon: geen beacon en geen fout", () => {
+  test("noodroute: false (site met event processors): nooit een beacon, ook niet na een mislukte chunk", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 10);
+    zetInitLaderVoorTests(() => Promise.reject(new Error("geen URL")));
+    scheduleSentry({ ...OPTS, noodroute: false });
+    stuur("error", { error: new Error("a") });
+    stuur("pagehide", {});
+    fakeDocument.visibilityState = "hidden";
+    stuurDoc("visibilitychange");
+    await rust();
+    await slaap(40);
+    expect(beacons).toHaveLength(0);
+  });
+
+  test("initAnalytics geeft sentry.noodroute door aan de planner", async () => {
+    initAnalytics({ siteId: "t", sentry: { dsn: OPTS.dsn, noodroute: false } });
+    stuur("error", { error: new Error("a") });
+    stuur("pagehide", {});
+    expect(beacons).toHaveLength(0);
+  });
+
+  test("onbruikbare dsn: geen beacon en geen fout", () => {
     scheduleSentry({ dsn: "geen-dsn" });
     stuur("error", { error: new Error("x") });
     expect(() => stuur("pagehide", {})).not.toThrow();
     expect(beacons).toHaveLength(0);
   });
 
-  test("mislukte import: één nieuwe poging; lukt die, dan start Sentry gewoon", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 60);
-    let pogingen = 0;
-    zetInitLaderVoorTests(() => {
-      pogingen++;
-      return pogingen === 1 ? Promise.reject(new Error("netwerk")) : import("../src/sentry/init");
-    });
+  test("init zelf faalt: de gebufferde fouten gaan alsnog als beacon weg", async () => {
+    initGooit = true;
     scheduleSentry(OPTS);
-    stuur("error", { error: new Error("tijdens het wachten") });
-    await slaap(WACHT_MS + 5);
-    while (rustTaken.length) rustTaken.shift()!(); // het rustmoment: eerste poging faalt
-    await slaap(20);
-    expect(pogingen).toBe(1); // de pauze voor de nieuwe poging is nog niet om
-    await slaap(120);
-    expect(pogingen).toBe(2);
+    stuur("error", { error: new Error("niet kwijt") });
+    await rust();
+    await slaap(30);
+    expect(beacons).toHaveLength(1);
+    expect(leesBeacon(0).event.exception.values[0].value).toBe("niet kwijt");
+    expect(listeners.get("error")?.size ?? 0).toBe(0);
+  });
+
+  test("foutmelding met chunk-URL: de tweede poging gaat naar dezelfde chunk met ?r=, niet naar de gecachete import", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 60);
+    const geladen: string[] = [];
+    let gewoon = 0;
+    await metOrigin(async () => {
+      zetInitLaderVoorTests(
+        () => (gewoon++, Promise.reject(CHUNK_FOUT("https://x.test/assets/init-abc.js"))),
+        (url) => (geladen.push(url), import("../src/sentry/init"))
+      );
+      scheduleSentry(OPTS);
+      stuur("error", { error: new Error("tijdens het wachten") });
+      await slaap(WACHT_MS + 5);
+      while (rustTaken.length) rustTaken.shift()!(); // het rustmoment: eerste poging faalt
+      await slaap(20);
+      expect(geladen).toHaveLength(0); // de pauze voor de nieuwe poging is nog niet om
+      await slaap(120);
+    });
+    expect(gewoon).toBe(1);
+    expect(geladen).toHaveLength(1);
+    expect(geladen[0]).toMatch(/^https:\/\/x\.test\/assets\/init-abc\.js\?r=\d+$/);
     expect(sentryAanroepen.map((a) => a.fn)).toEqual(["init", "captureException"]);
     expect(beacons).toHaveLength(0);
   });
 
-  test("foutmelding met chunk-URL: de tweede poging gaat naar dezelfde chunk met ?r=, niet naar de gecachete import", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 10);
-    g.location = { origin: "https://x.test" };
-    const geladen: string[] = [];
-    let gewoon = 0;
-    zetInitLaderVoorTests(
-      () => (gewoon++, Promise.reject(new Error("Failed to fetch dynamically imported module: https://x.test/assets/init-abc.js"))),
-      (url) => (geladen.push(url), import("../src/sentry/init"))
-    );
-    try {
-      scheduleSentry(OPTS);
-      await rust();
-      await slaap(40);
-    } finally {
-      delete g.location;
-    }
-    expect(gewoon).toBe(1);
-    expect(geladen).toHaveLength(1);
-    expect(geladen[0]).toMatch(/^https:\/\/x\.test\/assets\/init-abc\.js\?r=\d+$/);
-    expect(sentryAanroepen.filter((a) => a.fn === "init")).toHaveLength(1);
-  });
-
   test("chunk-URL die al een query heeft krijgt &r=", async () => {
     resetSentryScheduleForTests(WACHT_MS, 10);
-    g.location = { origin: "https://x.test" };
     const geladen: string[] = [];
-    zetInitLaderVoorTests(
-      () => Promise.reject(new Error("Failed to fetch dynamically imported module: https://x.test/assets/init-abc.js?v=2")),
-      (url) => (geladen.push(url), import("../src/sentry/init"))
-    );
-    try {
+    await metOrigin(async () => {
+      zetInitLaderVoorTests(
+        () => Promise.reject(CHUNK_FOUT("https://x.test/assets/init-abc.js?v=2")),
+        (url) => (geladen.push(url), import("../src/sentry/init"))
+      );
       scheduleSentry(OPTS);
       await rust();
       await slaap(40);
-    } finally {
-      delete g.location;
-    }
+    });
     expect(geladen[0]).toMatch(/^https:\/\/x\.test\/assets\/init-abc\.js\?v=2&r=\d+$/);
   });
 
-  test("chunk-URL van een andere origin krijgt geen ?r=: gewone tweede poging", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 10);
-    g.location = { origin: "https://x.test" };
-    const geladen: string[] = [];
-    let gewoon = 0;
-    zetInitLaderVoorTests(
-      () => (gewoon++, Promise.reject(new Error("Failed to fetch dynamically imported module: https://cdn.elders.test/init-abc.js"))),
-      (url) => (geladen.push(url), import("../src/sentry/init"))
-    );
-    try {
-      scheduleSentry(OPTS);
-      await rust();
-      await slaap(40);
-    } finally {
-      delete g.location;
+  test("zonder chunk-URL in de foutmelding (Safari) of van een andere origin: geen tweede poging, meteen de noodroute", async () => {
+    for (const fout of [new TypeError("Importing a module script failed."), CHUNK_FOUT("https://cdn.elders.test/init-abc.js")]) {
+      beacons.length = 0;
+      await slaap(WACHT_MS + 15);
+      resetSentryScheduleForTests(WACHT_MS, 10);
+      let gewoon = 0;
+      const geladen: string[] = [];
+      await metOrigin(async () => {
+        zetInitLaderVoorTests(
+          () => (gewoon++, Promise.reject(fout)),
+          (url) => (geladen.push(url), import("../src/sentry/init"))
+        );
+        scheduleSentry(OPTS);
+        stuur("error", { error: new Error("verloren zonder noodroute") });
+        await rust();
+        await slaap(40);
+      });
+      expect(gewoon).toBe(1);
+      expect(geladen).toHaveLength(0);
+      expect(sentryAanroepen).toHaveLength(0);
+      expect(beacons).toHaveLength(1);
+      expect(listeners.get("error")?.size ?? 0).toBe(0);
     }
-    expect(geladen).toHaveLength(0);
-    expect(gewoon).toBe(2);
   });
 
-  test("chunkUrlUitFout: Chromium, Firefox, Safari, query, andere origin", () => {
+  test("mislukt ook de poging met ?r=: precies twee verzoeken, daarna de beacon en stopt de buffer", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 10);
+    let gewoon = 0;
+    const geladen: string[] = [];
+    await metOrigin(async () => {
+      zetInitLaderVoorTests(
+        () => (gewoon++, Promise.reject(CHUNK_FOUT("https://x.test/assets/init-abc.js"))),
+        (url) => (geladen.push(url), Promise.reject(CHUNK_FOUT(url)))
+      );
+      scheduleSentry(OPTS);
+      stuur("error", { error: new Error("verloren zonder noodroute") });
+      await rust();
+      await slaap(60);
+    });
+    expect(gewoon + geladen.length).toBe(2);
+    expect(sentryAanroepen).toHaveLength(0);
+    expect(beacons).toHaveLength(1);
+    expect(leesBeacon(0).event.exception.values[0].value).toBe("verloren zonder noodroute");
+    expect(listeners.get("error")?.size ?? 0).toBe(0);
+    expect(listeners.get("pagehide")?.size ?? 0).toBe(0);
+  });
+
+  test("chunkUrlUitFout: Chromium, Firefox, Safari, query, andere origin, grens na .js", () => {
     const o = "https://x.test";
     expect(chunkUrlUitFout(new TypeError("Failed to fetch dynamically imported module: https://x.test/assets/init-a.js"), o)).toBe("https://x.test/assets/init-a.js");
     expect(chunkUrlUitFout(new Error("error loading dynamically imported module: https://x.test/a/init-b.js?v=2"), o)).toBe("https://x.test/a/init-b.js?v=2");
     expect(chunkUrlUitFout(new TypeError("Importing a module script failed."), o)).toBeUndefined();
     expect(chunkUrlUitFout(new Error("Failed to fetch dynamically imported module: https://elders.test/init.js"), o)).toBeUndefined();
     expect(chunkUrlUitFout(new Error("kapot: https://x.test/pagina"), o)).toBeUndefined();
+    expect(chunkUrlUitFout(new Error("kapot: https://x.test/data.json"), o)).toBeUndefined();
+    expect(chunkUrlUitFout(new Error("kapot: https://x.test/chart.js-vendor-abc.css"), o)).toBeUndefined();
     expect(chunkUrlUitFout("https://x.test/init.js", undefined)).toBeUndefined();
     expect(chunkUrlUitFout(undefined, o)).toBeUndefined();
+    // een enorm bericht blijft snel
+    const t = Date.now();
+    chunkUrlUitFout(new Error("https://x.test/a".repeat(20_000)), o); // veel begin-posities, geen .js: kwadratisch zonder lengtegrens
+    expect(Date.now() - t).toBeLessThan(200);
   });
 
   test("lukt de import meteen, dan geen tweede poging", async () => {
@@ -430,22 +492,6 @@ describe("hardening (v0.4.8)", () => {
     await rust();
     await slaap(30);
     expect(pogingen).toBe(1);
-  });
-
-  test("import faalt twee keer: geen Sentry, de buffer gaat als beacon weg en de buffer stopt", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 10);
-    let pogingen = 0;
-    zetInitLaderVoorTests(() => (pogingen++, Promise.reject(new Error("adblocker"))));
-    scheduleSentry(OPTS);
-    stuur("error", { error: new Error("verloren zonder noodroute") });
-    await rust();
-    await slaap(40);
-    expect(pogingen).toBe(2);
-    expect(sentryAanroepen).toHaveLength(0);
-    expect(beacons).toHaveLength(1);
-    expect((await leesBeacon(0)).event.exception.values[0].value).toBe("verloren zonder noodroute");
-    expect(listeners.get("error")?.size ?? 0).toBe(0);
-    expect(listeners.get("pagehide")?.size ?? 0).toBe(0);
   });
 
   test("de pauze voor de nieuwe poging is standaard 2 s", () => {

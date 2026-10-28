@@ -50,27 +50,38 @@ What this means for a site:
   reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
   window are lost, **unlike in v0.4.6 and earlier**, where they worked right after `initAnalytics()`.
 - **v0.4.8, safety nets for the lazy start.** (1) `initAnalytics` schedules Sentry first, before the
-  GA4/consent block, so a failure there no longer skips it. (2) When the visitor leaves before Sentry has
-  started (`pagehide`, or the tab becomes hidden), the buffered errors go out with `navigator.sendBeacon`
-  (`fetch` with `keepalive` where that is missing) as minimal events (`src/sentry/beacon.ts`): type,
-  message, URL, environment, release, the error's own time and the raw stack in `extra`, with the tag
-  `via: pagehide-beacon` so you can recognise them. They are not re-reported when the page comes back
-  from the bfcache. (3) A failed chunk `import()` (offline, ad blocker, stale hash after a redeploy) is
-  retried once after 2 s. Chromium remembers a failed import for the same URL (measured: a plain second
-  `import()` makes no request), so the retry asks for the same chunk with an extra `?r=<time>` taken from
-  the error message (own origin only; Safari does not name the URL, there the plain import is tried again).
-  If that fails too, the buffer goes out as beacons and monitoring stays off for that page view.
+  herkomst and GA4/consent code, so a failure there no longer skips it. (2) When the visitor leaves
+  before Sentry has started (`pagehide`, or the tab becomes hidden), the buffered errors are sent as
+  minimal events (`src/sentry/beacon.ts`) with a `fetch` (`keepalive`, `credentials: "omit"`;
+  `navigator.sendBeacon` only where `fetch` is missing, because it cannot omit credentials and would send
+  the `.prudai.com` cookies to the GlitchTip subdomain). An event has the type, the message (cut at 500
+  characters), the URL **without query and hash**, environment, release, the error's own time, the user
+  agent and the tag `via: pagehide-beacon`. No stack, no breadcrumbs, no session, so these events group
+  apart from SDK events. They are not re-reported when the page comes back from the bfcache. (3) A failed
+  chunk `import()` (offline, ad blocker, stale hash after a redeploy) is retried once after 2 s. Every
+  engine remembers a failed import for the same URL (measured 28-10-2026: Chromium 145/147, Firefox 142
+  and WebKit 26.4: a plain second `import()` makes no request), so the retry asks for the same chunk with
+  an extra `?r=<time>`, taken from the error message (own origin only). Chromium and Firefox name the URL
+  in that message, **Safari does not, so Safari has no retry** and goes straight to the emergency route.
+  If the retry fails too, or `Sentry.init` itself throws, the buffered errors go out as in (2) and
+  monitoring stays off for that page view.
+- **The emergency route bypasses event processors.** They live in the SDK, which is not there yet. A site
+  that scrubs events with `Sentry.addEventProcessor` (van-uren-naar-product: `schoonBreadcrumbs`) must set
+  `sentry: { dsn, noodroute: false }` when it moves to v0.4.8: then nothing is sent without the SDK, and
+  the errors in that window are lost as in v0.4.7. Everything the route sends is described above; it
+  already leaves out the URL query/hash and the stack.
 - What the lazy start still costs in error monitoring (measured with a real `@sentry/react` in Chromium,
-  27-10-2026): the buffer of 10 drops further errors silently (v0.4.6 reported all of them); beacon
-  events have no parsed stack frames, breadcrumbs or session; errors reported after the lazy start carry
-  the time they were reported (about 1 s after the real error) and mechanism
-  `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; a session starts late, so very
-  short visits do not count as a session; and a chunk that keeps failing means no monitoring for that page view beyond the buffered errors.
+  27-10-2026): the buffer of 10 drops further errors silently (v0.4.6 reported all of them); errors
+  reported after the lazy start carry the time they were reported (about 1 s after the real error) and
+  mechanism `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; a session starts late, so
+  very short visits do not count as a session; and a chunk that keeps failing means no monitoring for that
+  page view beyond the buffered errors.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
   `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
   client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz
   without the export). Event processors added through it before the lazy start sit on the isolation
-  scope, which `Sentry.init` keeps, so they also apply to the buffered errors.
+  scope, which `Sentry.init` keeps, so they also apply to the buffered errors that the SDK reports
+  (not to errors sent by the emergency route, see above).
 - With `tracesSampleRate > 0` tracing now starts after the lazy init: fetch/XHR child spans and
   `sentry-trace` headers from the first seconds are missing and the pageload idle span ends early. No
   site sets it today.
