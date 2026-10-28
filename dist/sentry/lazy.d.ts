@@ -12,11 +12,21 @@ import type { SentryInitOptions } from "./init";
  * product-page-zia, 27-10-2026: chunk op 216 ms, LCP op 274 ms), en dan rekent Lighthouse hem in
  * de LCP mee. Fouten die in de tussentijd vallen, vangt een kleine buffer op; die worden na
  * `Sentry.init` alsnog gemeld (maximaal `MAX_VROEGE_FOUTEN`).
+ *
+ * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
+ * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
+ * `import()` wordt één keer opnieuw geprobeerd, en lukt het dan nog niet, dan gaat de buffer
+ * ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
+ * fout daar Sentry niet meer overslaat.
  */
 export declare const NA_LOAD_MS = 1000;
 export declare const IDLE_TIMEOUT_MS = 3000;
 export declare const MAX_VROEGE_FOUTEN = 10;
+/** Pauze voor de ene nieuwe poging om de chunk te laden. */
+export declare const OPNIEUW_NA_MS = 2000;
 export declare function scheduleSentry(options: SentryInitOptions): void;
 /** @internal Alleen voor tests. Niet via de pakketroot. */
-export declare function resetSentryScheduleForTests(wachtNaLoadMs?: number): void;
+export declare function resetSentryScheduleForTests(wachtNaLoadMs?: number, opnieuwMs?: number): void;
+/** @internal Alleen voor tests: vervangt het laden van ./init (nabootsen van een mislukte import). */
+export declare function zetInitLaderVoorTests(lader: () => Promise<typeof import("./init")>): void;
 //# sourceMappingURL=lazy.d.ts.map

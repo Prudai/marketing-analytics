@@ -1,3 +1,4 @@
+import { stuurFoutenMetBeacon } from "./beacon";
 import type { SentryInitOptions, VroegeFout } from "./init";
 
 /**
@@ -13,13 +14,31 @@ import type { SentryInitOptions, VroegeFout } from "./init";
  * product-page-zia, 27-10-2026: chunk op 216 ms, LCP op 274 ms), en dan rekent Lighthouse hem in
  * de LCP mee. Fouten die in de tussentijd vallen, vangt een kleine buffer op; die worden na
  * `Sentry.init` alsnog gemeld (maximaal `MAX_VROEGE_FOUTEN`).
+ *
+ * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
+ * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
+ * `import()` wordt één keer opnieuw geprobeerd, en lukt het dan nog niet, dan gaat de buffer
+ * ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
+ * fout daar Sentry niet meer overslaat.
  */
 export const NA_LOAD_MS = 1000;
 export const IDLE_TIMEOUT_MS = 3000;
 export const MAX_VROEGE_FOUTEN = 10;
+/** Pauze voor de ene nieuwe poging om de chunk te laden. */
+export const OPNIEUW_NA_MS = 2000;
 
 let gepland = false;
 let naLoadMs = NA_LOAD_MS;
+let opnieuwNaMs = OPNIEUW_NA_MS;
+/** Hoe de chunk geladen wordt; een eigen variabele zodat tests een mislukte `import()` kunnen nabootsen. */
+let laadInit: () => Promise<typeof import("./init")> = () => import("./init");
+
+/** Eén `import()`, bij een fout (netwerk, adblocker) na `opnieuwNaMs` nog een keer. */
+function laadInitMetEenKeerOpnieuw(): Promise<typeof import("./init")> {
+  return laadInit().catch(
+    () => new Promise<void>((klaar) => setTimeout(klaar, opnieuwNaMs)).then(() => laadInit())
+  );
+}
 
 type Win = Window & {
   requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
@@ -41,40 +60,67 @@ export function scheduleSentry(options: SentryInitOptions): void {
   if (typeof window === "undefined" || !options.dsn || gepland) return;
   gepland = true;
   const win = window as Win;
+  const doc = typeof document === "undefined" ? undefined : document;
 
   const vroeg: VroegeFout[] = [];
   const opFout = (e: ErrorEvent) => {
     // Zonder error-object (cross-origin "Script error.") valt er niets te melden.
-    if (e.error != null && vroeg.length < MAX_VROEGE_FOUTEN) vroeg.push({ fout: e.error, soort: "onerror" });
+    if (e.error != null && vroeg.length < MAX_VROEGE_FOUTEN) vroeg.push({ fout: e.error, soort: "onerror", tijd: Date.now() });
   };
   const opAfwijzing = (e: PromiseRejectionEvent) => {
-    if (vroeg.length < MAX_VROEGE_FOUTEN) vroeg.push({ fout: e.reason, soort: "onunhandledrejection" });
+    if (vroeg.length < MAX_VROEGE_FOUTEN) vroeg.push({ fout: e.reason, soort: "onunhandledrejection", tijd: Date.now() });
+  };
+  // Noodroute: wat nu in de buffer staat gaat per beacon weg en wordt níét meer na init gemeld
+  // (anders kwam het dubbel binnen als de pagina uit de bfcache terugkomt).
+  const spoelNaarBeacon = () => {
+    if (vroeg.length === 0) return;
+    stuurFoutenMetBeacon(options, vroeg.splice(0));
+  };
+  const opVerborgen = () => {
+    if (doc?.visibilityState === "hidden") spoelNaarBeacon();
   };
   const luistert = typeof win.addEventListener === "function";
+  const luistertDoc = typeof doc?.addEventListener === "function";
   if (luistert) {
     win.addEventListener("error", opFout);
     win.addEventListener("unhandledrejection", opAfwijzing);
+    win.addEventListener("pagehide", spoelNaarBeacon);
   }
+  if (luistertDoc) doc!.addEventListener("visibilitychange", opVerborgen);
   const stopBuffer = () => {
-    if (!luistert) return;
-    win.removeEventListener("error", opFout);
-    win.removeEventListener("unhandledrejection", opAfwijzing);
+    if (luistert) {
+      win.removeEventListener("error", opFout);
+      win.removeEventListener("unhandledrejection", opAfwijzing);
+      win.removeEventListener("pagehide", spoelNaarBeacon);
+    }
+    if (luistertDoc) doc!.removeEventListener("visibilitychange", opVerborgen);
   };
 
   naLadenEnRust(win, () => {
-    import("./init")
+    laadInitMetEenKeerOpnieuw()
       .then(({ initSentry }) => {
         // In één taak: Sentry's eigen handlers staan na init, dus er valt geen fout tussen.
         initSentry(options, vroeg.splice(0));
         stopBuffer();
       })
-      // Chunk niet te laden (offline, adblocker): geen foutmelding, de site werkt gewoon door.
-      .catch(stopBuffer);
+      // Chunk ook na een nieuwe poging niet te laden (offline, adblocker, verlopen hash): de site
+      // werkt gewoon door, de gebufferde fouten gaan als noodroute weg, daarna stopt de buffer.
+      .catch(() => {
+        spoelNaarBeacon();
+        stopBuffer();
+      });
   });
 }
 
 /** @internal Alleen voor tests. Niet via de pakketroot. */
-export function resetSentryScheduleForTests(wachtNaLoadMs = NA_LOAD_MS): void {
+export function resetSentryScheduleForTests(wachtNaLoadMs = NA_LOAD_MS, opnieuwMs = OPNIEUW_NA_MS): void {
   gepland = false;
   naLoadMs = wachtNaLoadMs;
+  opnieuwNaMs = opnieuwMs;
+  laadInit = () => import("./init");
+}
+
+/** @internal Alleen voor tests: vervangt het laden van ./init (nabootsen van een mislukte import). */
+export function zetInitLaderVoorTests(lader: () => Promise<typeof import("./init")>): void {
+  laadInit = lader;
 }

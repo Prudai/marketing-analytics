@@ -17,6 +17,8 @@ export interface SentryInitOptions {
 export interface VroegeFout {
   fout: unknown;
   soort: "onerror" | "onunhandledrejection";
+  /** Tijdstip van de fout (ms sinds epoch); alleen de noodroute (./beacon) gebruikt het. */
+  tijd?: number;
 }
 
 let initialized = false;

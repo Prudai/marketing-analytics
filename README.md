@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.7 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.8 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -49,13 +49,22 @@ What this means for a site:
 - Uncaught errors and unhandled rejections from before Sentry starts are buffered (at most 10) and
   reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
   window are lost, **unlike in v0.4.6 and earlier**, where they worked right after `initAnalytics()`.
-- What the lazy start costs in error monitoring (measured with a real `@sentry/react` in Chromium,
-  27-10-2026): visitors who leave before Sentry has started (up to ~4 s after `load`) report nothing;
-  the buffer of 10 drops further errors silently (v0.4.6 reported all of them); if the chunk does not load
-  (offline, ad blocker, stale hash after a redeploy) monitoring is off for that page view, without retry;
-  buffered events carry the time they were reported (about 1 s after the real error), mechanism
-  `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; and a session starts late, so very
-  short visits do not count as a session.
+- **v0.4.8, safety nets for the lazy start.** (1) `initAnalytics` schedules Sentry first, before the
+  GA4/consent block, so a failure there no longer skips it. (2) When the visitor leaves before Sentry has
+  started (`pagehide`, or the tab becomes hidden), the buffered errors go out with `navigator.sendBeacon`
+  (`fetch` with `keepalive` where that is missing) as minimal events (`src/sentry/beacon.ts`): type,
+  message, URL, environment, release, the error's own time and the raw stack in `extra`, with the tag
+  `via: pagehide-beacon` so you can recognise them. They are not re-reported when the page comes back
+  from the bfcache. (3) A failed chunk `import()` (offline, ad blocker, stale hash after a redeploy) is
+  retried once after 2 s; if that fails too, the buffer goes out the same way and monitoring stays off for
+  that page view.
+- What the lazy start still costs in error monitoring (measured with a real `@sentry/react` in Chromium,
+  27-10-2026): the buffer of 10 drops further errors silently (v0.4.6 reported all of them); beacon
+  events have no parsed stack frames, breadcrumbs or session; errors reported after the lazy start carry
+  the time they were reported (about 1 s after the real error) and mechanism
+  `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; a session starts late, so very
+  short visits do not count as a session; and a chunk that keeps failing (the retry can hit the same
+  cached failure in some engines) means no monitoring for that page view beyond the buffered errors.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
   `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
   client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz
@@ -65,7 +74,7 @@ What this means for a site:
   `sentry-trace` headers from the first seconds are missing and the pageload idle span ends early. No
   site sets it today.
 - A test (`tests/sentry-lazy.test.ts`) fails as soon as `src/init.ts` reaches `@sentry/*` through a
-  static import again.
+  static import again, and as soon as `lazy.ts` imports anything but `./beacon` statically.
 
 Event helpers:
 
