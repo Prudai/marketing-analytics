@@ -286,6 +286,17 @@ describe("hardening (v0.4.8)", () => {
     expect(beacons).toHaveLength(2);
   });
 
+  test("een beacon draagt het tijdstip van de fout, niet van het vertrek", async () => {
+    scheduleSentry(OPTS);
+    const voor = Date.now();
+    stuur("error", { error: new Error("eerder") });
+    await slaap(60);
+    stuur("pagehide", {});
+    const { event } = await leesBeacon(0);
+    expect(event.timestamp * 1000).toBeGreaterThanOrEqual(voor - 1);
+    expect(event.timestamp * 1000).toBeLessThan(Date.now() - 40);
+  });
+
   test("tabblad verborgen vóór de start: zelfde noodroute; zichtbaar of lege buffer: niets", async () => {
     scheduleSentry(OPTS);
     stuurDoc("visibilitychange"); // nog zichtbaar
@@ -321,7 +332,7 @@ describe("hardening (v0.4.8)", () => {
   });
 
   test("mislukte import: één nieuwe poging; lukt die, dan start Sentry gewoon", async () => {
-    resetSentryScheduleForTests(WACHT_MS, 10);
+    resetSentryScheduleForTests(WACHT_MS, 60);
     let pogingen = 0;
     zetInitLaderVoorTests(() => {
       pogingen++;
@@ -329,8 +340,11 @@ describe("hardening (v0.4.8)", () => {
     });
     scheduleSentry(OPTS);
     stuur("error", { error: new Error("tijdens het wachten") });
-    await rust();
-    await slaap(30);
+    await slaap(WACHT_MS + 5);
+    while (rustTaken.length) rustTaken.shift()!(); // het rustmoment: eerste poging faalt
+    await slaap(20);
+    expect(pogingen).toBe(1); // de pauze voor de nieuwe poging is nog niet om
+    await slaap(120);
     expect(pogingen).toBe(2);
     expect(sentryAanroepen.map((a) => a.fn)).toEqual(["init", "captureException"]);
     expect(beacons).toHaveLength(0);
