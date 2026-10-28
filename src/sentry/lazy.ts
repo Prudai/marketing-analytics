@@ -17,7 +17,8 @@ import type { SentryInitOptions, VroegeFout } from "./init";
  *
  * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
  * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
- * `import()` wordt één keer opnieuw geprobeerd, en lukt het dan nog niet, dan gaat de buffer
+ * `import()` wordt één keer opnieuw geprobeerd (met een extra queryparameter op dezelfde chunk, omdat
+ * Chromium een mislukte import voor dezelfde URL onthoudt), en lukt het dan nog niet, dan gaat de buffer
  * ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
  * fout daar Sentry niet meer overslaat.
  */
@@ -33,10 +34,37 @@ let opnieuwNaMs = OPNIEUW_NA_MS;
 /** Hoe de chunk geladen wordt; een eigen variabele zodat tests een mislukte `import()` kunnen nabootsen. */
 let laadInit: () => Promise<typeof import("./init")> = () => import("./init");
 
-/** Eén `import()`, bij een fout (netwerk, adblocker) na `opnieuwNaMs` nog een keer. */
+/** Importeert een volledige URL; een eigen variabele zodat tests dit kunnen nabootsen. */
+let importUrl: (url: string) => Promise<typeof import("./init")> = (url) => import(/* @vite-ignore */ url);
+
+/**
+ * Een mislukte `import()` blijft in Chromium (en WebKit) voor die URL mislukt zolang de pagina leeft:
+ * de module map onthoudt de fout, een tweede `import("./init")` haalt niets meer op (gemeten in Chromium
+ * 145, 28-10-2026: één verzoek in plaats van twee). Dus de tweede poging gaat naar dezelfde chunk met een
+ * extra queryparameter. De URL staat in de foutmelding van Chromium en Firefox (Safari noemt hem niet;
+ * daar proberen we de gewone `import()` nog eens, wat in engines zonder foutcache wel werkt). Alleen een
+ * URL op de eigen origin krijgt de parameter.
+ */
+export function chunkUrlUitFout(fout: unknown, origin = typeof location === "undefined" ? undefined : location.origin): string | undefined {
+  const bericht = fout instanceof Error ? fout.message : typeof fout === "string" ? fout : "";
+  const m = bericht.match(/https?:\/\/[^\s"')]+?\.m?js(?:\?[^\s"')]*)?/);
+  if (!m || !origin) return undefined;
+  try {
+    return new URL(m[0]).origin === origin ? m[0] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Eén `import()`, bij een fout (netwerk, adblocker) na `opnieuwNaMs` nog één poging. */
 function laadInitMetEenKeerOpnieuw(): Promise<typeof import("./init")> {
   return laadInit().catch(
-    () => new Promise<void>((klaar) => setTimeout(klaar, opnieuwNaMs)).then(() => laadInit())
+    (fout: unknown) =>
+      new Promise<void>((klaar) => setTimeout(klaar, opnieuwNaMs)).then(() => {
+        const url = chunkUrlUitFout(fout);
+        if (!url) return laadInit();
+        return importUrl(`${url}${url.includes("?") ? "&" : "?"}r=${Date.now()}`);
+      })
   );
 }
 
@@ -118,9 +146,14 @@ export function resetSentryScheduleForTests(wachtNaLoadMs = NA_LOAD_MS, opnieuwM
   naLoadMs = wachtNaLoadMs;
   opnieuwNaMs = opnieuwMs;
   laadInit = () => import("./init");
+  importUrl = (url) => import(/* @vite-ignore */ url);
 }
 
 /** @internal Alleen voor tests: vervangt het laden van ./init (nabootsen van een mislukte import). */
-export function zetInitLaderVoorTests(lader: () => Promise<typeof import("./init")>): void {
+export function zetInitLaderVoorTests(
+  lader: () => Promise<typeof import("./init")>,
+  perUrl?: (url: string) => Promise<typeof import("./init")>
+): void {
   laadInit = lader;
+  if (perUrl) importUrl = perUrl;
 }

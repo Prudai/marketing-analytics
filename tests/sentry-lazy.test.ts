@@ -74,6 +74,7 @@ const {
   scheduleSentry,
   resetSentryScheduleForTests,
   zetInitLaderVoorTests,
+  chunkUrlUitFout,
   MAX_VROEGE_FOUTEN,
   IDLE_TIMEOUT_MS,
   NA_LOAD_MS,
@@ -348,6 +349,77 @@ describe("hardening (v0.4.8)", () => {
     expect(pogingen).toBe(2);
     expect(sentryAanroepen.map((a) => a.fn)).toEqual(["init", "captureException"]);
     expect(beacons).toHaveLength(0);
+  });
+
+  test("foutmelding met chunk-URL: de tweede poging gaat naar dezelfde chunk met ?r=, niet naar de gecachete import", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 10);
+    g.location = { origin: "https://x.test" };
+    const geladen: string[] = [];
+    let gewoon = 0;
+    zetInitLaderVoorTests(
+      () => (gewoon++, Promise.reject(new Error("Failed to fetch dynamically imported module: https://x.test/assets/init-abc.js"))),
+      (url) => (geladen.push(url), import("../src/sentry/init"))
+    );
+    try {
+      scheduleSentry(OPTS);
+      await rust();
+      await slaap(40);
+    } finally {
+      delete g.location;
+    }
+    expect(gewoon).toBe(1);
+    expect(geladen).toHaveLength(1);
+    expect(geladen[0]).toMatch(/^https:\/\/x\.test\/assets\/init-abc\.js\?r=\d+$/);
+    expect(sentryAanroepen.filter((a) => a.fn === "init")).toHaveLength(1);
+  });
+
+  test("chunk-URL die al een query heeft krijgt &r=", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 10);
+    g.location = { origin: "https://x.test" };
+    const geladen: string[] = [];
+    zetInitLaderVoorTests(
+      () => Promise.reject(new Error("Failed to fetch dynamically imported module: https://x.test/assets/init-abc.js?v=2")),
+      (url) => (geladen.push(url), import("../src/sentry/init"))
+    );
+    try {
+      scheduleSentry(OPTS);
+      await rust();
+      await slaap(40);
+    } finally {
+      delete g.location;
+    }
+    expect(geladen[0]).toMatch(/^https:\/\/x\.test\/assets\/init-abc\.js\?v=2&r=\d+$/);
+  });
+
+  test("chunk-URL van een andere origin krijgt geen ?r=: gewone tweede poging", async () => {
+    resetSentryScheduleForTests(WACHT_MS, 10);
+    g.location = { origin: "https://x.test" };
+    const geladen: string[] = [];
+    let gewoon = 0;
+    zetInitLaderVoorTests(
+      () => (gewoon++, Promise.reject(new Error("Failed to fetch dynamically imported module: https://cdn.elders.test/init-abc.js"))),
+      (url) => (geladen.push(url), import("../src/sentry/init"))
+    );
+    try {
+      scheduleSentry(OPTS);
+      await rust();
+      await slaap(40);
+    } finally {
+      delete g.location;
+    }
+    expect(geladen).toHaveLength(0);
+    expect(gewoon).toBe(2);
+  });
+
+  test("chunkUrlUitFout: Chromium, Firefox, Safari, query, andere origin", () => {
+    const o = "https://x.test";
+    expect(chunkUrlUitFout(new TypeError("Failed to fetch dynamically imported module: https://x.test/assets/init-a.js"), o)).toBe("https://x.test/assets/init-a.js");
+    expect(chunkUrlUitFout(new Error("error loading dynamically imported module: https://x.test/a/init-b.js?v=2"), o)).toBe("https://x.test/a/init-b.js?v=2");
+    expect(chunkUrlUitFout(new TypeError("Importing a module script failed."), o)).toBeUndefined();
+    expect(chunkUrlUitFout(new Error("Failed to fetch dynamically imported module: https://elders.test/init.js"), o)).toBeUndefined();
+    expect(chunkUrlUitFout(new Error("kapot: https://x.test/pagina"), o)).toBeUndefined();
+    expect(chunkUrlUitFout("https://x.test/init.js", undefined)).toBeUndefined();
+    expect(chunkUrlUitFout(undefined, o)).toBeUndefined();
   });
 
   test("lukt de import meteen, dan geen tweede poging", async () => {

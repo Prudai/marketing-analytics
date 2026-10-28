@@ -56,15 +56,16 @@ What this means for a site:
   message, URL, environment, release, the error's own time and the raw stack in `extra`, with the tag
   `via: pagehide-beacon` so you can recognise them. They are not re-reported when the page comes back
   from the bfcache. (3) A failed chunk `import()` (offline, ad blocker, stale hash after a redeploy) is
-  retried once after 2 s; if that fails too, the buffer goes out the same way and monitoring stays off for
-  that page view.
+  retried once after 2 s. Chromium remembers a failed import for the same URL (measured: a plain second
+  `import()` makes no request), so the retry asks for the same chunk with an extra `?r=<time>` taken from
+  the error message (own origin only; Safari does not name the URL, there the plain import is tried again).
+  If that fails too, the buffer goes out as beacons and monitoring stays off for that page view.
 - What the lazy start still costs in error monitoring (measured with a real `@sentry/react` in Chromium,
   27-10-2026): the buffer of 10 drops further errors silently (v0.4.6 reported all of them); beacon
   events have no parsed stack frames, breadcrumbs or session; errors reported after the lazy start carry
   the time they were reported (about 1 s after the real error) and mechanism
   `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; a session starts late, so very
-  short visits do not count as a session; and a chunk that keeps failing (the retry can hit the same
-  cached failure in some engines) means no monitoring for that page view beyond the buffered errors.
+  short visits do not count as a session; and a chunk that keeps failing means no monitoring for that page view beyond the buffered errors.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
   `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
   client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz

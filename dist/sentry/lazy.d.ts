@@ -15,7 +15,8 @@ import type { SentryInitOptions } from "./init";
  *
  * v0.4.8: (1) verlaat de bezoeker de pagina (`pagehide`, of het tabblad wordt verborgen) vóór de
  * start, dan gaat de buffer als noodroute met `sendBeacon` weg (./beacon); (2) een mislukte
- * `import()` wordt één keer opnieuw geprobeerd, en lukt het dan nog niet, dan gaat de buffer
+ * `import()` wordt één keer opnieuw geprobeerd (met een extra queryparameter op dezelfde chunk, omdat
+ * Chromium een mislukte import voor dezelfde URL onthoudt), en lukt het dan nog niet, dan gaat de buffer
  * ook via die noodroute; (3) `initAnalytics` plant dit vóór het GA4/consent-blok, zodat een
  * fout daar Sentry niet meer overslaat.
  */
@@ -24,9 +25,18 @@ export declare const IDLE_TIMEOUT_MS = 3000;
 export declare const MAX_VROEGE_FOUTEN = 10;
 /** Pauze voor de ene nieuwe poging om de chunk te laden. */
 export declare const OPNIEUW_NA_MS = 2000;
+/**
+ * Een mislukte `import()` blijft in Chromium (en WebKit) voor die URL mislukt zolang de pagina leeft:
+ * de module map onthoudt de fout, een tweede `import("./init")` haalt niets meer op (gemeten in Chromium
+ * 145, 28-10-2026: één verzoek in plaats van twee). Dus de tweede poging gaat naar dezelfde chunk met een
+ * extra queryparameter. De URL staat in de foutmelding van Chromium en Firefox (Safari noemt hem niet;
+ * daar proberen we de gewone `import()` nog eens, wat in engines zonder foutcache wel werkt). Alleen een
+ * URL op de eigen origin krijgt de parameter.
+ */
+export declare function chunkUrlUitFout(fout: unknown, origin?: string | undefined): string | undefined;
 export declare function scheduleSentry(options: SentryInitOptions): void;
 /** @internal Alleen voor tests. Niet via de pakketroot. */
 export declare function resetSentryScheduleForTests(wachtNaLoadMs?: number, opnieuwMs?: number): void;
 /** @internal Alleen voor tests: vervangt het laden van ./init (nabootsen van een mislukte import). */
-export declare function zetInitLaderVoorTests(lader: () => Promise<typeof import("./init")>): void;
+export declare function zetInitLaderVoorTests(lader: () => Promise<typeof import("./init")>, perUrl?: (url: string) => Promise<typeof import("./init")>): void;
 //# sourceMappingURL=lazy.d.ts.map
