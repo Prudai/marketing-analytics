@@ -7,7 +7,7 @@ Consumed by `prudai-website`, `product-page-alex` (leo.prudai.com), `product-pag
 ## Install
 
 ```sh
-bun add github:Prudai/marketing-analytics#v0.4.7 @sentry/react @vercel/speed-insights
+bun add github:Prudai/marketing-analytics#v0.4.8 @sentry/react @vercel/speed-insights
 ```
 
 ## Use
@@ -45,27 +45,51 @@ banner had faded in, and Lighthouse then counted it into the LCP (3.24 s, worse 
 
 What this means for a site:
 
-- No code change needed; `initAnalytics(config)` is unchanged.
+- No code change needed for v0.4.7, and `initAnalytics(config)` is unchanged. **From v0.4.8 a site that scrubs
+  events with `Sentry.addEventProcessor` must also set `sentry.noodroute: false`** (see below).
 - Uncaught errors and unhandled rejections from before Sentry starts are buffered (at most 10) and
   reported right after `Sentry.init`, marked unhandled. Explicit `Sentry.captureException` calls in that
   window are lost, **unlike in v0.4.6 and earlier**, where they worked right after `initAnalytics()`.
-- What the lazy start costs in error monitoring (measured with a real `@sentry/react` in Chromium,
-  27-10-2026): visitors who leave before Sentry has started (up to ~4 s after `load`) report nothing;
-  the buffer of 10 drops further errors silently (v0.4.6 reported all of them); if the chunk does not load
-  (offline, ad blocker, stale hash after a redeploy) monitoring is off for that page view, without retry;
-  buffered events carry the time they were reported (about 1 s after the real error), mechanism
-  `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; and a session starts late, so very
-  short visits do not count as a session.
+- **v0.4.8, safety nets for the lazy start.** (1) `initAnalytics` schedules Sentry first, before the
+  herkomst and GA4/consent code, so a failure there no longer skips it. (2) When the visitor leaves
+  before Sentry has started (`pagehide`, or the tab becomes hidden), the buffered errors are sent as
+  minimal events (`src/sentry/beacon.ts`) with a `fetch` (`keepalive`, `credentials: "omit"`). There is no
+  `navigator.sendBeacon` fallback: it cannot omit credentials and would send the `.prudai.com` cookies
+  (`cc_cookie`, `_ga*`) to the GlitchTip subdomain. An event has the error name (cut at 100), the message
+  (cut at 500), the URL **without query and hash** (cut at 500), environment and release (cut at 100), the
+  error's own time, the user agent and the tag `via: noodroute`. No stack, no breadcrumbs, no session, so
+  these events group apart from SDK events (the code adds about 1.2 kB gz to the critical chunk). They are not re-reported when the page comes back from the bfcache. (3) A failed
+  chunk `import()` (offline, ad blocker, stale hash after a redeploy) is retried once after 2 s. Every
+  engine remembers a failed import for the same URL (measured 28-10-2026: Chromium 145/147, Firefox 142
+  and WebKit 26.4: a plain second `import()` makes no request), so the retry asks for the same chunk with
+  an extra `?r=<time>`, taken from the error message (own origin only). Chromium and Firefox name the URL
+  in that message, **Safari does not, so Safari has no retry** and goes straight to the emergency route.
+  If the retry fails too, or `Sentry.init` itself throws, the buffered errors go out as in (2) and
+  monitoring stays off for that page view.
+- **The emergency route bypasses event processors.** They live in the SDK, which is not there yet, so
+  what a processor would normally scrub goes out as it is: the error message (500 characters), the error
+  name, and for a non-Error rejection the JSON of the reason. The URL has no query or hash and there is
+  no stack. A site that scrubs events with `Sentry.addEventProcessor` (van-uren-naar-product:
+  `schoonBreadcrumbs`) must set `sentry: { dsn, noodroute: false }` when it moves to v0.4.8. Then nothing
+  is ever sent without the SDK (pagehide, hidden tab, failed chunk, failed init) and the buffered errors
+  stay for the SDK to report, exactly as in v0.4.7; only a chunk that never loads loses them.
+- What the lazy start still costs in error monitoring (measured with a real `@sentry/react` in Chromium,
+  27-10-2026): the buffer of 10 drops further errors silently (v0.4.6 reported all of them); errors
+  reported after the lazy start carry the time they were reported (about 1 s after the real error) and
+  mechanism `onerror`/`onunhandledrejection` instead of `instrument/setTimeout`; a session starts late, so
+  very short visits do not count as a session; and a chunk that keeps failing means no monitoring for that
+  page view beyond the buffered errors.
 - The `Sentry` export stays. A site that imports it (van-uren-naar-product calls
   `Sentry.addEventProcessor` right after `initAnalytics`) keeps the parts it uses in its main chunk; the
   client and integrations still move to the lazy chunk (test build: entry 27 KB gz instead of 16 KB gz
   without the export). Event processors added through it before the lazy start sit on the isolation
-  scope, which `Sentry.init` keeps, so they also apply to the buffered errors.
+  scope, which `Sentry.init` keeps, so they also apply to the buffered errors that the SDK reports
+  (not to errors sent by the emergency route, see above).
 - With `tracesSampleRate > 0` tracing now starts after the lazy init: fetch/XHR child spans and
   `sentry-trace` headers from the first seconds are missing and the pageload idle span ends early. No
   site sets it today.
 - A test (`tests/sentry-lazy.test.ts`) fails as soon as `src/init.ts` reaches `@sentry/*` through a
-  static import again.
+  static import again, and as soon as `lazy.ts` imports anything but `./beacon` statically.
 
 Event helpers:
 

@@ -11,12 +11,16 @@ export interface SentryInitOptions {
   environment?: string;
   release?: string;
   tracesSampleRate?: number;
+  /** Zie `InitAnalyticsConfig.sentry.noodroute`; `false` zet de noodroute (./beacon) uit. */
+  noodroute?: boolean;
 }
 
 /** Een fout die vóór het laden van Sentry op de pagina viel (zie `./lazy`). */
 export interface VroegeFout {
   fout: unknown;
   soort: "onerror" | "onunhandledrejection";
+  /** Tijdstip van de fout (ms sinds epoch); alleen de noodroute (./beacon) gebruikt het. */
+  tijd?: number;
 }
 
 let initialized = false;

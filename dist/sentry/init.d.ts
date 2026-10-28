@@ -9,11 +9,15 @@ export interface SentryInitOptions {
     environment?: string;
     release?: string;
     tracesSampleRate?: number;
+    /** Zie `InitAnalyticsConfig.sentry.noodroute`; `false` zet de noodroute (./beacon) uit. */
+    noodroute?: boolean;
 }
 /** Een fout die vóór het laden van Sentry op de pagina viel (zie `./lazy`). */
 export interface VroegeFout {
     fout: unknown;
     soort: "onerror" | "onunhandledrejection";
+    /** Tijdstip van de fout (ms sinds epoch); alleen de noodroute (./beacon) gebruikt het. */
+    tijd?: number;
 }
 export declare function initSentry({ dsn, environment, release, tracesSampleRate }: SentryInitOptions, vroegeFouten?: readonly VroegeFout[]): void;
 /** @internal Alleen voor tests. Niet via de pakketroot. */
